@@ -1,5 +1,6 @@
 #include "controller.h"
 #include <stdarg.h>
+#include <string.h>
 
 struct BootInfo *bootInfo_load(uint32_t address)
 {
@@ -89,7 +90,7 @@ void image_setEncryption(struct ImageInfo *info, const char *pubKey, enum Encryp
 
 bool image_getFlag(const struct ImageInfo *info, enum ImageStatus flag)
 {
-    return info->status & ~(flag) == flag;
+    return (info->status & ~(flag)) == flag;
 }
 
 void image_setFlag(struct ImageInfo *info, enum ImageStatus flag)
@@ -97,8 +98,7 @@ void image_setFlag(struct ImageInfo *info, enum ImageStatus flag)
     switch (flag)
     {
     case BOOT_IMG_REQUESTED:
-    case BOOT_IMG_BACKUP_REQUESTED:
-        info->status |= (-1) & ~(BOOT_IMG_INVALID | BOOT_IMG_CURRENT);
+        info->status |= (-1) & ~(BOOT_IMG_INVALID);
 
     default:
         info->status &= ~(flag);
@@ -106,13 +106,15 @@ void image_setFlag(struct ImageInfo *info, enum ImageStatus flag)
     }
 }
 
-static int logIndex = BOOT_LOG_ADDR;
+static int logStartIndex;
+static int logIndex;
 static struct FlashDevice *logFlash;
 
 void bootLogInit(struct FlashDevice *flash, uint32_t address)
 {
     logFlash = flash;
     logIndex = address;
+    logStartIndex = address;
 
     char buffer[FLASH_BLOCK_SIZE];
 
@@ -130,16 +132,18 @@ void bootLogInit(struct FlashDevice *flash, uint32_t address)
 
 void bootLog(const char *format, ...)
 {
-    if (logIndex - BOOT_LOG_ADDR >= (3 * FLASH_BLOCK_SIZE) / 4)
+    if (logIndex - logStartIndex >= (3 * FLASH_BLOCK_SIZE) / 4)
     {
-        logFlash->erase(BOOT_LOG_ADDR, FLASH_BLOCK_SIZE);
-        logIndex = BOOT_LOG_ADDR;
+        logFlash->erase(logStartIndex, FLASH_BLOCK_SIZE);
+        logIndex = logStartIndex;
     }
 
     va_list args;
     va_start(args, format);
 
     char buffer[256];
+    memset(buffer, 0x00, sizeof(buffer));
+
     vsprintf(buffer, format, args);
 
     va_end(args);

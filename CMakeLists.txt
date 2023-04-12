@@ -6,4 +6,4 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(hello_world)
 
-target_sources(app PRIVATE src/main.c $ENV{ZEPHYR_BASE}/lib/os/json.c)
+target_sources(app PRIVATE src/main.c src/rocket-z/controller.c src/rocket-z/bootloader.c $ENV{ZEPHYR_BASE}/lib/os/json.c)

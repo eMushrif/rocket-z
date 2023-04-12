@@ -7,38 +7,50 @@
 #include <zephyr/kernel.h>
 #include <zephyr/data/json.h>
 #include "string.h"
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/flash.h>
 
-#include "rocket-z/controller.h"
-
-#ifndef BOOT_INFO_ADDR
-#define BOOT_INFO_ADDR (0xC000 - FLASH_BLOCK_SIZE) // 0xB000. 0xC000 is the typical start of app. 0x1000 is the typical flash block size
-#endif
-
-#ifndef BOOT_LOG_ADDR
-#define BOOT_LOG_ADDR (0xC000 - (2 * FLASH_BLOCK_SIZE)) // 0xA000. 0xC000 is the typical start of app.
-#endif
+#include "rocket-z/bootloader.h"
 
 void loadImage(struct ImageInfo *img);
 
+static const struct device *internalFlashDeviceId;
+
+int zephyrFlashRead(size_t address, void *data, size_t size)
+{
+	return flash_read(internalFlashDeviceId, address, data, size);
+}
+
+int zephyrFlashErase(size_t address, size_t size)
+{
+	return flash_erase(internalFlashDeviceId, address, size);
+}
+
+int zephyrFlashWrite(size_t address, const void *data, size_t size)
+{
+	// data must be aligned in 4 bytes
+	return flash_write(internalFlashDeviceId, address, data, size % 4 ? size + 4 - size % 4 : size);
+}
+
+int zephyrFlashLock(size_t address, size_t size, enum FlashLockType lockType)
+{
+	// return flash_write_protection_set(internalFlashDeviceId, true);
+}
+
+struct FlashDevice flashDevice_internalFlash = {
+	.read = zephyrFlashRead,
+	.erase = zephyrFlashErase,
+	.write = zephyrFlashWrite,
+	.lock = zephyrFlashLock,
+};
+
 void main(void)
 {
-	bootLogInit(, BOOT_LOG_ADDR);
-	loadImage(BOOT_INFO_ADDR);
-
-	// struct BootInfo *bootInfo = bootInfo_load(BOOT_INFO_ADDR);
-
-	// for (int i = 0; i < 2; i++)
-	// {
-	// 	if (!image_getFlag(bootInfo->img[i], BOOT_IMG_INVALID) && image_getFlag(bootInfo->img[i], BOOT_IMG_REQUESTED))
-	// 	{
-	// 		if (loadImage(BOOT_INFO_ADDR))
-	// 	}
-	// }
-
-	// bootInfo->img[0].status = 0;
-	// image_setFlag(&bootInfo->img[0], BOOT_IMG_REQUESTED);
-
-	// bootInfo_save(0x0000, bootInfo);
+	internalFlashDeviceId = device_get_binding(DT_NODE_FULL_NAME(DT_CHOSEN(zephyr_flash_controller)));
+	bootloader_run(&flashDevice_internalFlash, &flashDevice_internalFlash);
+	while (true)
+		;
 }
 
 struct signatureDigest

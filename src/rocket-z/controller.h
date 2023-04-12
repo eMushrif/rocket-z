@@ -5,6 +5,8 @@
 
 #include "stdint.h"
 #include "stdbool.h"
+#include "stddef.h"
+#include <stdlib.h>
 
 #ifndef FLASH_BLOCK_SIZE
 #define FLASH_BLOCK_SIZE 0x1000
@@ -33,17 +35,9 @@ enum EncryptionMethod
 
 enum ImageStatus
 {
-    BOOT_IMG_REQUESTED = 1 << 0,                             //< request loading this image. setting this flag resets all other flags except BOOT_IMG_CURRENT and BOOT_IMG_INVALID
-    BOOT_IMG_BACKUP_REQUESTED = BOOT_IMG_REQUESTED | 1 << 1, //< image to be loaded as a backup. setting this flag resets all other flags except BOOT_IMG_CURRENT and BOOT_IMG_INVALID
-    BOOT_IMG_LOAD_ATTEMPT = 1 << 2,                          //< an attempt to load this image was made
-    BOOT_IMG_ERROR = 1 << 3,                                 //< an error occured using this image
-    BOOT_IMG_LOADING_ERROR = BOOT_IMG_ERROR | 1 << 4,
-    BOOT_IMG_BAD_SIGNATURE_DIGEST = BOOT_IMG_LOADING_ERROR | 1 << 9,
-    BOOT_IMG_BAD_SIGNATURE = BOOT_IMG_LOADING_ERROR | 1 << 5,
-    BOOT_IMG_CHECKSUM_ERROR = BOOT_IMG_LOADING_ERROR | 1 << 6,
-    BOOT_IMG_STRIKE_ERROR = BOOT_IMG_ERROR | 1 << 7,
-    BOOT_IMG_INVALID = 1 << 8,  //< image was invalidated and will not be loaded. Changing other image flags will not set this flag.
-    BOOT_IMG_CURRENT = 1 << 10, //< the currently-loaded image
+    BOOT_IMG_REQUESTED = 1 << 0,    //< request loading this image. setting this flag resets all other flags and BOOT_IMG_INVALID
+    BOOT_IMG_LOAD_ATTEMPT = 1 << 2, //< an attempt to load this image was made
+    BOOT_IMG_INVALID = 1 << 8,      //< image was invalidated and will not be loaded. Changing other image flags will not set this flag.
 };
 
 enum ImageStorage
