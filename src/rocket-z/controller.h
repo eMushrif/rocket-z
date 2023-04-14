@@ -7,6 +7,7 @@
 #include "stdbool.h"
 #include "stddef.h"
 #include <stdlib.h>
+#include <zephyr/kernel.h>
 
 #ifndef FLASH_BLOCK_SIZE
 #define FLASH_BLOCK_SIZE 0x1000
@@ -51,22 +52,19 @@ enum ImageStorage
  */
 struct ImageInfo
 {
-    char imageId[32]; //< Firendly image name
+    char imageName[64]; //< Firendly image name. preferablly unique.
 
-    int status; //< Image status flags. Do not read or write directly. Use the functions below.
-    int strikeCountResetVal;
-    int strikeCount_;
+    int32_t strikeCountResetVal;
 
-    // Image storage info
-    enum ImageStorage storage; //< Where the image is stored
-    size_t startAddr;          //< Address in flash where the image is stored
+    int32_t loadRequests; //< Inverted bit field of load requests
+    int32_t loadAttempts; //< Inverted bit field of load attempts
 
     // Image encryption info
     struct
     {
-        int method;
-        char pubKey[128]; //< Public key used for encryption. Base 64 encoded.
-        size_t encryptedSize;
+        int32_t method;
+        char pubKey[65]; //< Public key used for encryption. Base 64 encoded.
+        uint32_t encryptedSize;
     } encryption;
 
     // signature info
@@ -81,15 +79,28 @@ struct ImageInfo
                 "provider": "zodiac-api",
                 "userId": "584",
                 "time": 1680531112,
-                "domain": "saar-*",
-                "deviceRole": "*",
+                "variantPattern": "my-product-*:master",
                 "size": 256121,
                 "sha256": "IiSuHNuVCD86YRg5lPAMFrRm8hjIp4jB3jncUhjQHRs="
             }
         */
         char digest[512];
-        char signature[128];
+        char signature[64];
     } signatureInfo;
+};
+
+/**
+ * \brief Image storage information. Includes image information itself.
+ */
+struct ImageStore
+{
+    // Image storage info
+    enum ImageStorage storage; //< Where the image is stored
+    size_t startAddr;          //< Address in flash where the image is stored
+    size_t maxSize;            //< Maximum size for storage of the image
+    bool isValid;              //< Is the image stored valid
+
+    struct ImageInfo imageInfo; //< Image information
 };
 
 enum BootInfoVersion
@@ -104,13 +115,13 @@ struct BootInfo
 {
     int version; //< Struct version
 
-    char bootloaderName[32];    //< Friendly bootloader name
-    char currentDomainName[32]; //< Current domain name of the app
-    char currentDeviceRole[32]; //< Current domain name of the app
+    char bootloaderName[32]; //< Friendly bootloader name
 
-    size_t currentImageSize; //< Size of the currently loaded image
+    char currentVariant[100]; //< Current variant name
 
-    struct ImageInfo img[2];
+    struct ImageInfo currentImage; //< Information about the currently loaded image
+
+    struct ImageStore img[2];
 };
 
 /**
@@ -142,6 +153,12 @@ struct BootInfo *bootInfo_load(uint32_t address);
 void bootInfo_save(uint32_t address, const struct BootInfo *info);
 
 /**
+ * \brief Free boot information structure
+ * \param info Pointer to the boot information structure
+ */
+void bootInfo_free(struct BootInfo *info);
+
+/**
  * \brief Set image name
  * \param info Pointer to the image information structure
  * \param name Image name
@@ -153,39 +170,59 @@ void image_setName(struct ImageInfo *info, const char *name);
  * \param info Pointer to the image information structure
  * \param address Address in flash where the image is stored
  * \param storage Where the image is stored
+ * \param maxSize Maximum size for storage of the image
  */
-void image_setAddress(struct ImageInfo *info, size_t address, enum ImageStorage storage);
+void image_setStorage(struct ImageStore *info, size_t address, enum ImageStorage storage, size_t maxSize);
 
 /**
  * \brief Set encryption information for an image
  * \param info Pointer to the image information structure
- * \param pubKey Public key used for encryption. Base 64 encoded.
+ * \param pubKey_b64 Public key used for encryption. Base 64 encoded.
  * \param encryptedSize Size of the encrypted image
  * \param method Encryption method
  */
-void image_setEncryption(struct ImageInfo *info, const char *pubKey, enum EncryptionMethod method, size_t encryptedSize);
+void image_setEncryption(struct ImageInfo *info, const char *pubKey_b64, enum EncryptionMethod method, size_t encryptedSize);
 
 /**
  * Set signature information for an image
  * \param info Pointer to the image information structure
  * \param digest Digest message as a JSON string
- * \param signature Signature of the digest. Base 64 encoded.
+ * \param signature_b64 Signature of the digest. Base 64 encoded.
  */
-void image_setSignature(struct ImageInfo *info, const char *digest, const char *signature);
+void image_setSignature(struct ImageInfo *info, const char *digest, const char *signature_b64);
 
 /**
- * \brief Get a flag from the image status
- * \param info Pointer to the image information structure
- * \param flag Flag to get
+ * \brief Set image valid status
+ * \param info Pointer to the image store struct
+ * \param valid Valid status
  */
-bool image_getFlag(const struct ImageInfo *info, enum ImageStatus flag);
+void image_setValid(struct ImageStore *info, bool valid);
 
 /**
- * \brief Set a flash in the image status
+ * \brief Set currently-running image variant name
  * \param info Pointer to the image information structure
- * \param flag Flag to set
+ * \param variant Image variant information.
  */
-void image_setFlag(struct ImageInfo *info, enum ImageStatus flag);
+void bootInfo_setCurrentVariant(struct BootInfo *store, const char *variant);
+
+/**
+ * \brief Mark image to be loaded
+ * \param info Pointer to the image information structure
+ */
+void image_setLoadRequest(struct ImageInfo *info);
+
+/**
+ * \brief Clear image load request
+ * \param info Pointer to the image information structure
+ */
+void image_clearLoadRequest(struct ImageInfo *info);
+
+/**
+ * \brief Check if image has a load request
+ * \param info Pointer to the image information structure
+ * \return true if image has a load request, false otherwise
+ */
+bool image_hasLoadRequest(struct ImageInfo *info);
 
 /**
  * \brief Log event

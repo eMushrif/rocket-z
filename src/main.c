@@ -45,6 +45,20 @@ struct FlashDevice flashDevice_internalFlash = {
 	.lock = zephyrFlashLock,
 };
 
+struct FlashDevice *bootInfo_getFlashDevice(enum ImageStorage storage)
+{
+	switch (storage)
+	{
+	case BOOT_IMG_STORAGE_INTERNAL_FLASH:
+		return &flashDevice_internalFlash;
+		break;
+
+	default:
+		return NULL;
+		break;
+	}
+}
+
 void main(void)
 {
 	internalFlashDeviceId = device_get_binding(DT_NODE_FULL_NAME(DT_CHOSEN(zephyr_flash_controller)));
