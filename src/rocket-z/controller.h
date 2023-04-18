@@ -13,6 +13,24 @@
 #define FLASH_BLOCK_SIZE 0x1000
 #endif
 
+#ifndef FLASH_WRITE_ALIGNMENT
+#define FLASH_WRITE_ALIGNMENT 4
+#endif
+
+#ifndef BOOT_INFO_ADDR
+#define BOOT_INFO_ADDR (0xC000 - FLASH_BLOCK_SIZE) // 0xB000. 0xC000 is the typical start of app. 0x1000 is the typical flash block size
+#endif
+
+#ifndef BOOT_LOG_ADDR
+#define BOOT_LOG_ADDR (0xC000 - (2 * FLASH_BLOCK_SIZE)) // 0xA000. 0xC000 is the typical start of app.
+#endif
+
+enum BOOT_ERROR
+{
+    BOOT_ERROR_SUCCESS = 0,
+
+};
+
 enum FlashLockType
 {
     FLASH_LOCK_READ = 1 << 0,
@@ -63,7 +81,7 @@ struct ImageInfo
     struct
     {
         int32_t method;
-        char pubKey[65]; //< Public key used for encryption. Base 64 encoded.
+        uint8_t pubKey[65]; //< Public key used for encryption. Base 64 encoded.
         uint32_t encryptedSize;
     } encryption;
 
@@ -72,7 +90,7 @@ struct ImageInfo
     {
 
         /**
-         * \brief Digest message as a JSON string
+         * \brief Digest message as a JSON string. See SignatureMessage struct for details.
          * example:
          * {
                 "version": 0,
@@ -84,9 +102,20 @@ struct ImageInfo
                 "sha256": "IiSuHNuVCD86YRg5lPAMFrRm8hjIp4jB3jncUhjQHRs="
             }
         */
-        char digest[512];
-        char signature[64];
+        char message[512];
+        uint8_t signature[64];
     } signatureInfo;
+};
+
+struct SignatureMessage
+{
+    int32_t version;
+    char *provider;
+    char *userId;
+    uint32_t time;
+    char *variantPattern;
+    uint32_t size;
+    char *sha256;
 };
 
 /**
@@ -118,6 +147,8 @@ struct BootInfo
     char bootloaderName[32]; //< Friendly bootloader name
 
     char currentVariant[100]; //< Current variant name
+
+    uint8_t rollbackImageIndex; //< Index of the image to rollback to
 
     struct ImageInfo currentImage; //< Information about the currently loaded image
 
@@ -186,10 +217,10 @@ void image_setEncryption(struct ImageInfo *info, const char *pubKey_b64, enum En
 /**
  * Set signature information for an image
  * \param info Pointer to the image information structure
- * \param digest Digest message as a JSON string
- * \param signature_b64 Signature of the digest. Base 64 encoded.
+ * \param message Digest message as a JSON string
+ * \param signature_b64 Signature of the message. Base 64 encoded.
  */
-void image_setSignature(struct ImageInfo *info, const char *digest, const char *signature_b64);
+void image_setSignature(struct ImageInfo *info, const char *message, const char *signature_b64);
 
 /**
  * \brief Set image valid status
@@ -223,6 +254,22 @@ void image_clearLoadRequest(struct ImageInfo *info);
  * \return true if image has a load request, false otherwise
  */
 bool image_hasLoadRequest(struct ImageInfo *info);
+
+/**
+ * \brief Check if image is the one currently loaded
+ * \param info Pointer to the image information structure
+ * \param bootInfo Pointer to the boot information structure
+ * \return true if image is the one currently loaded, false otherwise
+ */
+bool image_isCurrent(struct ImageInfo *info, struct BootInfo *bootInfo);
+
+/**
+ * \brief Check if image signature is valid
+ * \param store Pointer to the image store structure
+ * \param bootInfo Pointer to the boot information structure
+ * \param messageOut Pointer to the output of signature message data.
+ */
+bool image_verifySignature(const struct ImageStore *store, const struct BootInfo *bootInfo, struct SignatureMessage *messageOut);
 
 /**
  * \brief Log event

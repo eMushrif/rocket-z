@@ -1,6 +1,11 @@
 #include "controller.h"
 #include <stdarg.h>
 #include <string.h>
+#include "keys.h"
+#include <zephyr/data/json.h>
+#include <zephyr/sys/base64.h>
+#include <tinycrypt/sha256.h>
+#include <tinycrypt/ecc_dsa.h>
 
 struct BootInfoBuffer
 {
@@ -94,19 +99,19 @@ void image_setStorage(struct ImageStore *info, size_t address, enum ImageStorage
     info->storage = storage;
 }
 
-void image_setSignature(struct ImageInfo *info, const char *digest, const char *signature)
+void image_setSignature(struct ImageInfo *info, const char *message, const char *signature)
 {
-    if (strlen(digest) <= sizeof(info->signatureInfo.digest) - 1)
-        strcpy(info->signatureInfo.digest, digest);
+    if (strlen(message) <= sizeof(info->signatureInfo.message) - 1)
+        strcpy(info->signatureInfo.message, message);
 
-    if (strlen(signature) <= sizeof(info->signatureInfo.signature) - 1)
-        strcpy(info->signatureInfo.signature, signature);
+    int len;
+    base64_decode(info->signatureInfo.signature, sizeof(info->signatureInfo.signature), len, message, strlen(message));
 }
 
 void image_setEncryption(struct ImageInfo *info, const char *pubKey, enum EncryptionMethod method, size_t encryptedSize)
 {
-    if (strlen(pubKey) <= sizeof(info->encryption.pubKey) - 1)
-        strcpy(info->encryption.pubKey, pubKey);
+    int len;
+    base64_decode(info->encryption.pubKey, sizeof(info->encryption.pubKey), len, pubKey, strlen(pubKey));
 
     info->encryption.method = method;
     info->encryption.encryptedSize = encryptedSize;
@@ -153,7 +158,154 @@ bool image_hasLoadRequest(struct ImageInfo *info)
     return info->loadRequests != info->loadAttempts;
 }
 
-static int logStartIndex;
+bool image_isCurrent(struct ImageInfo *info, struct BootInfo *bootInfo)
+{
+    return 0 == memcmp(&info->signatureInfo, &bootInfo->currentImage.signatureInfo, sizeof(info->signatureInfo));
+}
+
+bool isMatch(const char *str, const char *pattern)
+{
+
+    if (NULL == str || NULL == pattern)
+        return false;
+
+    int str_len = strlen(str);
+    int pattern_len = strlen(pattern);
+    // dry run this sample case on paper , if unable to understand what soln does
+    // p = "a*bc" s = "abcbc"
+    int sIdx = 0, pIdx = 0, lastWildcardIdx = -1, sBacktrackIdx = -1,
+        nextToWildcardIdx = -1;
+    while (sIdx < str_len)
+    {
+        if (pIdx < pattern_len &&
+            (pattern[pIdx] == '?' || pattern[pIdx] == str[sIdx]))
+        {
+            // chars match
+            ++sIdx;
+            ++pIdx;
+        }
+        else if (pIdx < pattern_len && pattern[pIdx] == '*')
+        {
+            // wildcard, so chars match - store index.
+            lastWildcardIdx = pIdx;
+            nextToWildcardIdx = ++pIdx;
+            sBacktrackIdx = sIdx;
+
+            // storing the pidx+1 as from there I want to match the remaining pattern
+        }
+        else if (lastWildcardIdx == -1)
+        {
+            // no match, and no wildcard has been found.
+            return false;
+        }
+        else
+        {
+            // backtrack - no match, but a previous wildcard was found.
+            pIdx = nextToWildcardIdx;
+            sIdx = ++sBacktrackIdx;
+            // backtrack string from previousbacktrackidx + 1 index to see if then new
+            // pidx and sidx have same chars, if that is the case that means wildcard
+            // can absorb the chars in b/w and still further we can run the algo, if
+            // at later stage it fails we can backtrack
+        }
+    }
+    for (int i = pIdx; i < pattern_len; i++)
+    {
+        if (pattern[i] != '*')
+            return false;
+    }
+    return true;
+    // true if every remaining char in p is wildcard
+}
+
+#define DESCR_ARRAY_SIZE 7
+
+struct json_obj_descr descr[DESCR_ARRAY_SIZE] = {
+    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, version, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, provider, JSON_TOK_STRING),
+    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, userId, JSON_TOK_STRING),
+    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, time, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, variantPattern, JSON_TOK_STRING),
+    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, size, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, sha256, JSON_TOK_STRING),
+};
+
+bool image_verifySignature(const struct ImageStore *store, const struct BootInfo *bootInfo, struct SignatureMessage *message)
+{
+    if (!store->isValid)
+    {
+        bootLog("ERROR: Image %s is marked not valid", store->imageInfo.imageName);
+        return false;
+    }
+
+    int parseResult = json_obj_parse(store->imageInfo.signatureInfo.message, strlen(store->imageInfo.signatureInfo.message), descr, DESCR_ARRAY_SIZE, message);
+
+    if (!((parseResult & 127) == 127))
+    {
+        for (int i = 0; i < DESCR_ARRAY_SIZE; i++)
+        {
+            if (!(parseResult & (1 << i)))
+            {
+                bootLog("ERROR: Image %s signature message is missing field %s", store->imageInfo.imageName, descr[i].field_name);
+            }
+        }
+        bootLog("ERROR: Image %s has invalid signature message", store->imageInfo.imageName);
+        return false;
+    }
+
+#if 0 // Checking variant pattern match should be done by the application
+    if (!isMatch(bootInfo->currentVariant, message->variantPattern))
+    {
+        bootLog("ERROR: Image %s is signed for pattern %s that doesn't match current variant (%s)", store->imageInfo.imageName, message->variantPattern, bootInfo->currentVariant);
+        bootLog("HINT: use bootInfo_setCurrentVariant() to set the current variant");
+        return false;
+    }
+#endif
+
+    struct tc_sha256_state_struct digestSha;
+
+    tc_sha256_init(&digestSha);
+
+    tc_sha256_update(&digestSha, (const uint8_t *)store->imageInfo.signatureInfo.message, strlen(store->imageInfo.signatureInfo.message));
+
+    uint8_t digest[TC_SHA256_DIGEST_SIZE];
+
+    tc_sha256_final(&digestSha, digest);
+
+    uint8_t *signerKey;
+
+    if (0 == strcmp(message->provider, "zodiac"))
+    {
+        // make sure this provider is allowed to sign given pattern
+        if (!isMatch(message->variantPattern, "*")) // zodiac is allowed to sign any variant
+        {
+            bootLog("ERROR: Image %s is signed by %s but this provider is not permitted to sign this variant pattern (%s)", store->imageInfo.imageName, message->provider, message->variantPattern);
+            return false;
+        }
+        signerKey = zodiacSignerPub;
+    }
+    else
+    {
+        bootLog("ERROR: Image %s is signed by unknown provider %s", store->imageInfo.imageName, message->provider);
+        return false;
+    }
+
+    if (uECC_verify(signerKey, digest, TC_SHA256_DIGEST_SIZE, store->imageInfo.signatureInfo.signature, uECC_secp256r1))
+    {
+        bootLog("ERROR: Image %s has invalid signature", store->imageInfo.imageName);
+        return false;
+    }
+
+    if (message->size > store->imageInfo.encryption.encryptedSize)
+    {
+        bootLog("ERROR: Image %s has invalid size %d; expected less than encrypted size (%d)", store->imageInfo.imageName, store->imageInfo.encryption.encryptedSize, message->size);
+        return false;
+    }
+
+    return true;
+}
+
+static int logStartIndex = 0;
 static int logIndex;
 static struct FlashDevice *logFlash;
 
@@ -179,10 +331,26 @@ void bootLogInit(struct FlashDevice *flash, uint32_t address)
 
 void bootLog(const char *format, ...)
 {
+    if (logStartIndex == 0)
+        return; // not initialized
+
     if (logIndex - logStartIndex >= (3 * FLASH_BLOCK_SIZE) / 4)
     {
         logFlash->erase(logStartIndex, FLASH_BLOCK_SIZE);
         logIndex = logStartIndex;
+    }
+
+    if (logIndex % 4 != 0)
+    {
+        // make sure our writing is alligned to 4 bytes
+        uint8_t j[FLASH_WRITE_ALIGNMENT];
+
+        logFlash->read(logIndex - logIndex % FLASH_WRITE_ALIGNMENT, j, FLASH_WRITE_ALIGNMENT);
+        memset(j + logIndex % FLASH_WRITE_ALIGNMENT, 0, FLASH_WRITE_ALIGNMENT - logIndex % FLASH_WRITE_ALIGNMENT);
+
+        int wres = logFlash->write(logIndex - logIndex % FLASH_WRITE_ALIGNMENT, j, FLASH_WRITE_ALIGNMENT);
+
+        logIndex += wres >= 0 ? wres : 0;
     }
 
     va_list args;
@@ -195,7 +363,7 @@ void bootLog(const char *format, ...)
 
     va_end(args);
 
-    logFlash->write(logIndex, buffer, strlen(buffer) + 1);
+    int wres = logFlash->write(logIndex, buffer, strlen(buffer) + 1);
 
-    logIndex += strlen(buffer) + 1;
+    logIndex += wres >= 0 ? wres : 0;
 }
