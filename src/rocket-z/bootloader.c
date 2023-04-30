@@ -23,7 +23,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
 
     // For testing
     image_setName(&bootInfo->img[0].imageInfo, "image0");
-    image_setSignature(&bootInfo->img[0].imageInfo, "{\"version\":0,\"provider\":\"zodiac\",\"userId\":\"584\",\"time\":1680531112,\"variantPattern\":\"my-product-*:master\",\"size\":256121,\"sha256\":\"IiSuHNuVCD86YRg5lPAMFrRm8hjIp4jB3jncUhjQHRs=\"}", "1hLCzGyyV48LJ9CY0bsGCX0B5FKI2ELtA6obuBC0AiBeH04vgVWLaHNGtSwKFM/SZVleRzi/jxIzYpJ1tZ0pZA==");
+    image_setSignature(&bootInfo->img[0].imageInfo, "{\"version\":0,\"provider\":\"zodiac\",\"userId\":\"584\",\"time\":1680531112,\"variantPattern\":\"my-product-*:master\",\"size\":256121,\"sha256\":\"IiSuHNuVCD86YRg5lPAMFrRm8hjIp4jB3jncUhjQHRs=\"}", "U7+SV5jB3JryoWo9O76fIdRl86lIv2Zd02hlB5UCIQDIYU7JGntyCemCH9Tvl9etwiSn4sJJR9+uth0ykcKJUA==");
     image_setLoadRequest(&bootInfo->img[0].imageInfo);
     image_setValid(&bootInfo->img[0], true);
     bootInfo_setCurrentVariant(bootInfo, "my-product-dev:master");
@@ -43,7 +43,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
             struct SignatureMessage signatureMessage;
 
             // verify new image
-            image_verifySignature(&bootInfo->img[i], bootInfo, &signatureMessage);
+            image_verify(&bootInfo->img[i], bootInfo, &signatureMessage);
 
             // Find current image and set rollback image
             for (int i = 0; i < ARRAY_SIZE(bootInfo->img); i++)

@@ -33,7 +33,7 @@ struct BootInfo *bootInfo_load(uint32_t address)
         // reset image status
         for (int i = 0; i < ARRAY_SIZE(result->img); i++)
         {
-            image_clearLoadRequest(&result->img[i]);
+            image_clearLoadRequest(&result->img[i].imageInfo);
             result->img[i].imageInfo.strikeCountResetVal = 0x07;
             result->img[i].isValid = false;
         }
@@ -58,7 +58,7 @@ void bootInfo_save(uint32_t address, const struct BootInfo *info)
     {
         if (((uint8_t *)&buffer->bootInfo[0])[i] & ~((uint8_t *)&buffer->bootInfo[1])[i])
         {
-            bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->erase(address, FLASH_BLOCK_SIZE);
+            bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->erase(address, BOOT_FLASH_BLOCK_SIZE);
             break;
         }
     }
@@ -105,19 +105,19 @@ void image_setSignature(struct ImageInfo *info, const char *message, const char 
         strcpy(info->signatureInfo.message, message);
 
     int len;
-    base64_decode(info->signatureInfo.signature, sizeof(info->signatureInfo.signature), len, message, strlen(message));
+    base64_decode(info->signatureInfo.signature, sizeof(info->signatureInfo.signature), &len, signature, strlen(signature));
 }
 
 void image_setEncryption(struct ImageInfo *info, const char *pubKey, enum EncryptionMethod method, size_t encryptedSize)
 {
     int len;
-    base64_decode(info->encryption.pubKey, sizeof(info->encryption.pubKey), len, pubKey, strlen(pubKey));
+    base64_decode(info->encryption.pubKey, sizeof(info->encryption.pubKey), &len, pubKey, strlen(pubKey));
 
     info->encryption.method = method;
     info->encryption.encryptedSize = encryptedSize;
 
     // invalidate the image
-    image_setFlag(info, BOOT_IMG_INVALID);
+    image_setValid(info, false);
 }
 
 void image_setValid(struct ImageStore *info, bool valid)
@@ -230,15 +230,13 @@ struct json_obj_descr descr[DESCR_ARRAY_SIZE] = {
     JSON_OBJ_DESCR_PRIM(struct SignatureMessage, sha256, JSON_TOK_STRING),
 };
 
-bool image_verifySignature(const struct ImageStore *store, const struct BootInfo *bootInfo, struct SignatureMessage *message)
+int image_verifySignature(const struct ImageInfo *imageInfo, struct SignatureMessage *messageOut)
 {
-    if (!store->isValid)
-    {
-        bootLog("ERROR: Image %s is marked not valid", store->imageInfo.imageName);
-        return false;
-    }
+    char messageBuff[sizeof(imageInfo->signatureInfo.message)];
 
-    int parseResult = json_obj_parse(store->imageInfo.signatureInfo.message, strlen(store->imageInfo.signatureInfo.message), descr, DESCR_ARRAY_SIZE, message);
+    strcpy(messageBuff, imageInfo->signatureInfo.message);
+
+    int parseResult = json_obj_parse(messageBuff, strlen(messageBuff), descr, DESCR_ARRAY_SIZE, messageOut);
 
     if (!((parseResult & 127) == 127))
     {
@@ -246,63 +244,88 @@ bool image_verifySignature(const struct ImageStore *store, const struct BootInfo
         {
             if (!(parseResult & (1 << i)))
             {
-                bootLog("ERROR: Image %s signature message is missing field %s", store->imageInfo.imageName, descr[i].field_name);
+                bootLog("ERROR: Image %s signature message is missing field %s", imageInfo->imageName, descr[i].field_name);
             }
         }
-        bootLog("ERROR: Image %s has invalid signature message", store->imageInfo.imageName);
-        return false;
+        bootLog("ERROR: Image %s has invalid signature message", imageInfo->imageName);
+        return BOOT_ERROR_SIGNATURE_MESSAGE_INVALID;
     }
 
-#if 0 // Checking variant pattern match should be done by the application
-    if (!isMatch(bootInfo->currentVariant, message->variantPattern))
-    {
-        bootLog("ERROR: Image %s is signed for pattern %s that doesn't match current variant (%s)", store->imageInfo.imageName, message->variantPattern, bootInfo->currentVariant);
-        bootLog("HINT: use bootInfo_setCurrentVariant() to set the current variant");
-        return false;
-    }
-#endif
+    const uint8_t *signerKey;
 
-    struct tc_sha256_state_struct digestSha;
-
-    tc_sha256_init(&digestSha);
-
-    tc_sha256_update(&digestSha, (const uint8_t *)store->imageInfo.signatureInfo.message, strlen(store->imageInfo.signatureInfo.message));
-
-    uint8_t digest[TC_SHA256_DIGEST_SIZE];
-
-    tc_sha256_final(&digestSha, digest);
-
-    uint8_t *signerKey;
-
-    if (0 == strcmp(message->provider, "zodiac"))
+    if (0 == strcmp(messageOut->provider, "zodiac"))
     {
         // make sure this provider is allowed to sign given pattern
-        if (!isMatch(message->variantPattern, "*")) // zodiac is allowed to sign any variant
+        if (!isMatch(messageOut->variantPattern, "*")) // zodiac is allowed to sign any variant
         {
-            bootLog("ERROR: Image %s is signed by %s but this provider is not permitted to sign this variant pattern (%s)", store->imageInfo.imageName, message->provider, message->variantPattern);
-            return false;
+            bootLog("ERROR: Image %s is signed by %s but this provider is not expected to sign this variant pattern (%s)", imageInfo->imageName, messageOut->provider, messageOut->variantPattern);
+            return BOOT_ERROR_SIGNER_HAS_LIMITED_PERMISSIONS;
         }
         signerKey = zodiacSignerPub;
     }
     else
     {
-        bootLog("ERROR: Image %s is signed by unknown provider %s", store->imageInfo.imageName, message->provider);
+        bootLog("ERROR: Image %s is signed by unknown provider %s", imageInfo->imageName, messageOut->provider);
         return false;
     }
 
-    if (uECC_verify(signerKey, digest, TC_SHA256_DIGEST_SIZE, store->imageInfo.signatureInfo.signature, uECC_secp256r1))
+    struct tc_sha256_state_struct digestSha;
+
+    tc_sha256_init(&digestSha);
+
+    tc_sha256_update(&digestSha, (const uint8_t *)imageInfo->signatureInfo.message, strlen(imageInfo->signatureInfo.message));
+
+    uint8_t digest[TC_SHA256_DIGEST_SIZE];
+
+    tc_sha256_final(digest, &digestSha);
+
+    if (!uECC_verify(signerKey, digest, TC_SHA256_DIGEST_SIZE, imageInfo->signatureInfo.signature, uECC_secp256r1()))
     {
-        bootLog("ERROR: Image %s has invalid signature", store->imageInfo.imageName);
-        return false;
+        bootLog("ERROR: Image %s has invalid signature", imageInfo->imageName);
+        return BOOT_ERROR_INVALID_SIGNATURE;
     }
 
-    if (message->size > store->imageInfo.encryption.encryptedSize)
+    return BOOT_ERROR_SUCCESS;
+}
+
+int image_verify(const struct ImageStore *store, const struct BootInfo *bootInfo, struct SignatureMessage *messageOut)
+{
+    if (!store->isValid)
     {
-        bootLog("ERROR: Image %s has invalid size %d; expected less than encrypted size (%d)", store->imageInfo.imageName, store->imageInfo.encryption.encryptedSize, message->size);
-        return false;
+        bootLog("ERROR: Image %s is marked not valid", store->imageInfo.imageName);
+        return BOOT_ERROR_IMAGE_NOT_VALID;
     }
 
-    return true;
+    int sigVer = image_verifySignature(&store->imageInfo, messageOut);
+
+    if (BOOT_ERROR_SUCCESS != sigVer)
+    {
+        return sigVer;
+    }
+
+#if 1 // Checking variant pattern match should be done by the application
+    if (!isMatch(bootInfo->currentVariant, messageOut->variantPattern))
+    {
+        bootLog("WARNING: Image %s is signed for pattern %s that doesn't match current variant (%s)", store->imageInfo.imageName, messageOut->variantPattern, bootInfo->currentVariant);
+        bootLog("HINT: use bootInfo_setCurrentVariant() to set the current variant");
+        // return false;
+    }
+#endif
+
+    // verify image size
+    if (messageOut->size > store->imageInfo.encryption.encryptedSize)
+    {
+        bootLog("ERROR: Image %s has invalid size - %d; expected no more than encrypted size (%d)", store->imageInfo.imageName, store->imageInfo.encryption.encryptedSize, messageOut->size);
+        return BOOT_ERROR_INVALID_SIZE;
+    }
+
+    if (messageOut->size > BOOT_MAX_IMAGE_SIZE)
+    {
+        bootLog("ERROR: Image %s has invalid size - %d; larger than maximum allowed (%d)", store->imageInfo.imageName, store->imageInfo.encryption.encryptedSize, BOOT_MAX_IMAGE_SIZE);
+        return BOOT_ERROR_INVALID_SIZE;
+    }
+
+    return BOOT_ERROR_SUCCESS;
 }
 
 static int logStartIndex = 0;
@@ -315,11 +338,11 @@ void bootLogInit(struct FlashDevice *flash, uint32_t address)
     logIndex = address;
     logStartIndex = address;
 
-    char buffer[FLASH_BLOCK_SIZE];
+    char buffer[BOOT_FLASH_BLOCK_SIZE];
 
-    logFlash->read(logIndex, buffer, FLASH_BLOCK_SIZE);
+    logFlash->read(logIndex, buffer, BOOT_FLASH_BLOCK_SIZE);
 
-    for (int i = 0; i < FLASH_BLOCK_SIZE; i++)
+    for (int i = 0; i < BOOT_FLASH_BLOCK_SIZE; i++)
     {
         if (buffer[i] == 0xFF)
         {
@@ -334,21 +357,21 @@ void bootLog(const char *format, ...)
     if (logStartIndex == 0)
         return; // not initialized
 
-    if (logIndex - logStartIndex >= (3 * FLASH_BLOCK_SIZE) / 4)
+    if (logIndex - logStartIndex >= (3 * BOOT_FLASH_BLOCK_SIZE) / 4)
     {
-        logFlash->erase(logStartIndex, FLASH_BLOCK_SIZE);
+        logFlash->erase(logStartIndex, BOOT_FLASH_BLOCK_SIZE);
         logIndex = logStartIndex;
     }
 
     if (logIndex % 4 != 0)
     {
         // make sure our writing is alligned to 4 bytes
-        uint8_t j[FLASH_WRITE_ALIGNMENT];
+        uint8_t j[BOOT_FLASH_WRITE_ALIGNMENT];
 
-        logFlash->read(logIndex - logIndex % FLASH_WRITE_ALIGNMENT, j, FLASH_WRITE_ALIGNMENT);
-        memset(j + logIndex % FLASH_WRITE_ALIGNMENT, 0, FLASH_WRITE_ALIGNMENT - logIndex % FLASH_WRITE_ALIGNMENT);
+        logFlash->read(logIndex - logIndex % BOOT_FLASH_WRITE_ALIGNMENT, j, BOOT_FLASH_WRITE_ALIGNMENT);
+        memset(j + logIndex % BOOT_FLASH_WRITE_ALIGNMENT, 0, BOOT_FLASH_WRITE_ALIGNMENT - logIndex % BOOT_FLASH_WRITE_ALIGNMENT);
 
-        int wres = logFlash->write(logIndex - logIndex % FLASH_WRITE_ALIGNMENT, j, FLASH_WRITE_ALIGNMENT);
+        int wres = logFlash->write(logIndex - logIndex % BOOT_FLASH_WRITE_ALIGNMENT, j, BOOT_FLASH_WRITE_ALIGNMENT);
 
         logIndex += wres >= 0 ? wres : 0;
     }

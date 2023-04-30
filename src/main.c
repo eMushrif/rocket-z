@@ -10,6 +10,7 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/flash.h>
+#include <zephyr/fatal.h>
 
 #include "rocket-z/bootloader.h"
 
@@ -31,7 +32,7 @@ int zephyrFlashErase(size_t address, size_t size)
 int zephyrFlashWrite(size_t address, const void *data, size_t size)
 {
 	// data must be aligned in 4 bytes
-	int actSize = size % FLASH_WRITE_ALIGNMENT ? size + FLASH_WRITE_ALIGNMENT - size % FLASH_WRITE_ALIGNMENT : size;
+	int actSize = size % BOOT_FLASH_WRITE_ALIGNMENT ? size + BOOT_FLASH_WRITE_ALIGNMENT - size % BOOT_FLASH_WRITE_ALIGNMENT : size;
 	int res = flash_write(internalFlashDeviceId, address, data, actSize);
 	return res >= 0 ? actSize : res;
 }
@@ -61,6 +62,21 @@ struct FlashDevice *bootInfo_getFlashDevice(enum ImageStorage storage)
 		break;
 	}
 }
+
+#if 0
+void k_sys_fatal_error_handler(unsigned int reason, const z_arch_esf_t *esf)
+{
+#ifdef _DEBUG
+	__asm("bkpt");
+	while (true)
+	{
+	}
+#endif
+	extern void k_sys_fatal_error_handler_mem(unsigned int reason, const z_arch_esf_t *esf);
+
+	k_sys_fatal_error_handler_mem(reason, esf);
+}
+#endif
 
 void main(void)
 {

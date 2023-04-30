@@ -9,26 +9,39 @@
 #include <stdlib.h>
 #include <zephyr/kernel.h>
 
-#ifndef FLASH_BLOCK_SIZE
-#define FLASH_BLOCK_SIZE 0x1000
+#ifndef BOOT_FLASH_BLOCK_SIZE
+#define BOOT_FLASH_BLOCK_SIZE 0x1000
 #endif
 
-#ifndef FLASH_WRITE_ALIGNMENT
-#define FLASH_WRITE_ALIGNMENT 4
+#ifndef BOOT_FLASH_WRITE_ALIGNMENT
+#define BOOT_FLASH_WRITE_ALIGNMENT 4
+#endif
+
+#ifndef BOOT_MAX_IMAGE_SIZE
+#define BOOT_MAX_IMAGE_SIZE (954368) // 932KiB
 #endif
 
 #ifndef BOOT_INFO_ADDR
-#define BOOT_INFO_ADDR (0xC000 - FLASH_BLOCK_SIZE) // 0xB000. 0xC000 is the typical start of app. 0x1000 is the typical flash block size
+#define BOOT_INFO_ADDR (0xC000 - BOOT_FLASH_BLOCK_SIZE) // 0xB000. 0xC000 is the typical start of app. 0x1000 is the typical flash block size
 #endif
 
 #ifndef BOOT_LOG_ADDR
-#define BOOT_LOG_ADDR (0xC000 - (2 * FLASH_BLOCK_SIZE)) // 0xA000. 0xC000 is the typical start of app.
+#define BOOT_LOG_ADDR (0xC000 - (2 * BOOT_FLASH_BLOCK_SIZE)) // 0xA000. 0xC000 is the typical start of app.
 #endif
 
-enum BOOT_ERROR
+#ifndef BOOT_SIGNATURE_MESSAGE_MAX_SIZE
+#define BOOT_SIGNATURE_MESSAGE_MAX_SIZE 512
+#endif
+
+enum BootError
 {
     BOOT_ERROR_SUCCESS = 0,
-
+    BOOT_ERROR_IMAGE_NOT_VALID = -1,
+    BOOT_ERROR_SIGNATURE_MESSAGE_INVALID = -2,
+    BOOT_ERROR_SIGNER_HAS_LIMITED_PERMISSIONS = -3,
+    BOOT_ERROR_UNKNOWN_SIGNER = -4,
+    BOOT_ERROR_INVALID_SIGNATURE = -5,
+    BOOT_ERROR_INVALID_SIZE = -6,
 };
 
 enum FlashLockType
@@ -102,7 +115,7 @@ struct ImageInfo
                 "sha256": "IiSuHNuVCD86YRg5lPAMFrRm8hjIp4jB3jncUhjQHRs="
             }
         */
-        char message[512];
+        char message[BOOT_SIGNATURE_MESSAGE_MAX_SIZE];
         uint8_t signature[64];
     } signatureInfo;
 };
@@ -265,11 +278,20 @@ bool image_isCurrent(struct ImageInfo *info, struct BootInfo *bootInfo);
 
 /**
  * \brief Check if image signature is valid
- * \param store Pointer to the image store structure
+ * \param imageInfo Pointer to the image information structure
+ * \param messageOut Pointer to the output of signature message data.
+ * \return 0 if verified, BootError otherwise
+ */
+int image_verifySignature(const struct ImageInfo *imageInfo, struct SignatureMessage *messageOut);
+
+/**
+ * \brief Performs multiple checks to verify that the image is loadable. Includes signature verification.
+ * \param imageStore Pointer to the image information structure
  * \param bootInfo Pointer to the boot information structure
  * \param messageOut Pointer to the output of signature message data.
+ * \return 0 if verified, BootError otherwise
  */
-bool image_verifySignature(const struct ImageStore *store, const struct BootInfo *bootInfo, struct SignatureMessage *messageOut);
+int image_verify(const struct ImageStore *imageStore, const struct BootInfo *bootInfo, struct SignatureMessage *messageOut);
 
 /**
  * \brief Log event
