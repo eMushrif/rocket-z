@@ -12,5 +12,6 @@ $ENV{ZEPHYR_BASE}/lib/os/base64.c
 $ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/sha256.c
 $ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/ecc_dsa.c
 $ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/ecc.c
-
+src/rocket-z/pem/tiny-asn1.c
+src/rocket-z/pem/pem-decode.c
 )
