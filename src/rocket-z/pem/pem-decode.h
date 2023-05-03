@@ -7,10 +7,10 @@
 #define __PEM_DECODE_H__
 
 #include <stddef.h>
-#include "tiny-asn1.h"
 
 enum DerObjectType
 {
+    // secp256r1
     EC_P256_PRIVATE_KEY = 0, // size 32 bytes
     EC_P256_PUBLIC_KEY,      // size 64 bytes
     EC_P256_SIGNATURE,       // size 64 bytes
@@ -21,10 +21,10 @@ enum DerObjectType
  * @param pem PEM text
  * @param type DER object type
  * @param data DER object data output
- * @param len DER object data output actual length
+ * @param len DER object data output actual length. leave NULL if not needed
  * @return 0 if success, -1 if format error or object not found
  */
-int pemDecode(const char *pem, enum DerObjectType type, uint8_t *data, size_t *len = NULL);
+int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *len);
 
 /**
  * @brief Get expected size of DER data

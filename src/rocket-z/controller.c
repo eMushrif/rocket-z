@@ -6,6 +6,7 @@
 #include <zephyr/sys/base64.h>
 #include <tinycrypt/sha256.h>
 #include <tinycrypt/ecc_dsa.h>
+#include "pem/pem-decode.h"
 
 struct BootInfoBuffer
 {
@@ -101,6 +102,73 @@ void image_setStorage(struct ImageStore *info, size_t address, enum ImageStorage
 
 void image_setSignature(struct ImageInfo *info, const char *message, const char *signature)
 {
+    // for testing
+    char *sample =
+        /*
+                "wfwe-f wfe -----BEGIN PUBLIC- KEY-----\n"
+                "M\r\nFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE70rS77CvKXulXM1Cx0CqbnMcuaA5\r\n"
+                "1pNE2qWsmlcJGNOjSScD1C+cpzd6JVTd63LnV1cmCabNCmjCpPM/A9+xCA==\n"
+                "-----END PUBLIC- KEY-----";
+        */
+        //"MFcwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQO9K0u+wryl7pVzNQsdAqm5zHLmgOdaTRNqlrJpXCRjTo0knA9QvnKc3eiVU3ety51dXJgmmzQpowqTzPwPfsQg="; //public without prefix
+        //"MFYwEwYHKoZIzj0CAQYIKoZIzj0DAQcDOe9K0u+wryl7pVzNQsdAqm5zHLmgOdaTRNqlrJpXCRjTo0knA9QvnKc3eiVU3ety51dXJgmmzQpowqTzPwPfsQ=="; // public but missing one byte
+
+        // valid private key. openssl format.
+        /*
+        "-----BEGIN PRIVATE KEY-----"
+        "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQglA3/"
+        "ruYlqJ84hCNm"
+        "jsHgjlQgMtXqrB6AvlkTFpM7aoShRANCAATvStLvsK8pe6VczULHQKpucxy5oDnW"
+        "k0TapayaVwkY06NJJwPUL5ynN3olVN3rcudXVyYJps0KaMKk8z8D37EI"
+        "-----END PRIVATE KEY-----";
+        */
+
+        // private key but private part missing a byte
+        //"MIGGAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBGwwagIBAQQfDf+u5iWonziEI2aOweCOVCAy1eqsHoC+WRMWkztqhKFEA0IABO9K0u+wryl7pVzNQsdAqm5zHLmgOdaTRNqlrJpXCRjTo0knA9QvnKc3eiVU3ety51dXJgmmzQpowqTzPwPfsQg=";
+
+        // private key but both private and public parts are too short
+        //"MIFmAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBEwwSgIBAQQfDf+u5iWonziEI2aOweCOVCAy1eqsHoC+WRMWkztqhKEkAyIABO9K0u+wryl7pVzNQsdAqm5zHLmgOdaTRNqlrJpXCRjT";
+
+        // valid private key but private and public parts are swapped
+        //"MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAaFEA0IABO9K0u+wryl7pVzNQsdAqm5zHLmgOdaTRNqlrJpXCRjTo0knA9QvnKc3eiVU3ety51dXJgmmzQpowqTzPwPfsQgEIJQN/67mJaifOIQjZo7B4I5UIDLV6qwegL5ZExaTO2qE";
+
+        // public key too short
+        //"MIEfAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBAIwAwMBAA==";
+
+        // valid private key.. different format from https://8gwifi.org/sshfunctions.jsp
+        /*
+        "-----BEGIN EC PRIVATE KEY-----"
+        "MHcCAQEEICASnnyHNEvmRA0O/6pry6fN+aBMMbcO2grE6xY4KGyUoAoGCCqGSM49"
+        "AwEHoUQDQgAEUNBc8YzBXWUb40QqzQrJeYYCDeYKt2jboFDkwqvaUMBOWQFx9dOT"
+        "yBNZK8uyTExwGbg0uCJGOB/6pW8qfnMJvw=="
+        "-----END EC PRIVATE KEY-----";
+        */
+
+        // valid public key. different format https://8gwifi.org/ecfunctions.jsp
+        //"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEj4G5Z4KkAaSrfrprM09jVxiEmPMg\nAEE+GR64NpC67AZgZ5IEi+hD7BugLqHSeoB/u0MBTBQaM99HDTx7btDo8Q==";
+
+        // valid signature from openssl
+        "MEQCIE3W89WYksf3jVeN+y1GNLDJajllz4jMkeV8LfuZuvfWAiBgxS5AL+drqdq4jvfrywK6aOZAX96b/cfagNHR8hOuww==";
+
+    // valid signature with prefix
+    //"MEUCID6Yl2S2Se7uu9hhcV5zPsw9+rNBnIpQ8hXSujuvvWg4AiEAxctC299uLI85Yi6nmJpnwtFgnqOB5TsrJpVjGnR/2Uc=";
+
+    // signature with bytes missing
+    //"MEICH5iXZLZJ7u672GFxXnM+zD36s0GcilDyFdK6O6+9aDgCH8tC299uLI85Yi6nmJpnwtFgnqOB5TsrJpVjGnR/2Uc=";
+
+    // signature with on algo has right number of bytes
+    //"MEMCH5iXZLZJ7u672GFxXnM+zD36s0GcilDyFdK6O6+9aDgCIMtC299uLI85Yi6nmJpnwtFgnqOB5TsrJpVjGnR/2UcL";
+
+    uint8_t out[64];
+
+    int lenz = 3;
+    int res;
+    res = pemExtract(sample, EC_P256_PUBLIC_KEY, out, &lenz);
+    res = pemExtract(sample, EC_P256_PRIVATE_KEY, out, &lenz);
+    res = pemExtract(sample, EC_P256_SIGNATURE, out, &lenz);
+
+    printk("%d", res);
+
     if (strlen(message) <= sizeof(info->signatureInfo.message) - 1)
         strcpy(info->signatureInfo.message, message);
 
