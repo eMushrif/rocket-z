@@ -11,7 +11,11 @@ $ENV{ZEPHYR_BASE}/lib/os/json.c
 $ENV{ZEPHYR_BASE}/lib/os/base64.c
 $ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/sha256.c
 $ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/ecc_dsa.c
+$ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/ecc_dh.c
 $ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/ecc.c
+$ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/aes_decrypt.c
+$ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/aes_encrypt.c
+$ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/cbc_mode.c
 src/rocket-z/pem/tiny-asn1.c
 src/rocket-z/pem/pem-decode.c
 )

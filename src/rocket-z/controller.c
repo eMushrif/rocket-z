@@ -34,7 +34,7 @@ struct BootInfo *bootInfo_load(uint32_t address)
         // reset image status
         for (int i = 0; i < ARRAY_SIZE(result->img); i++)
         {
-            image_clearLoadRequest(&result->img[i].imageInfo);
+            appImage_clearLoadRequest(&result->img[i].imageInfo);
             result->img[i].imageInfo.strikeCountResetVal = 0x07;
             result->img[i].isValid = false;
         }
@@ -88,107 +88,64 @@ void bootInfo_free(struct BootInfo *info)
     }
 }
 
-void image_setName(struct ImageInfo *info, const char *name)
+void appImage_setName(struct AppImageInfo *info, const char *name)
 {
     if (strlen(name) <= sizeof(info->imageName) - 1)
         strcpy(info->imageName, name);
 }
 
-void image_setStorage(struct ImageStore *info, size_t address, enum ImageStorage storage, size_t maxSize)
+void appImage_setStorage(struct AppImageStore *info, size_t address, enum AppImageStorage storage, size_t maxSize)
 {
     info->startAddr = address;
     info->storage = storage;
 }
 
-void image_setSignature(struct ImageInfo *info, const char *message, const char *signature)
+enum BootError appImage_setSignature(struct AppImageInfo *info, const char *message, const char *signature)
 {
-    // for testing
-    char *sample =
-        /*
-                "wfwe-f wfe -----BEGIN PUBLIC- KEY-----\n"
-                "M\r\nFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE70rS77CvKXulXM1Cx0CqbnMcuaA5\r\n"
-                "1pNE2qWsmlcJGNOjSScD1C+cpzd6JVTd63LnV1cmCabNCmjCpPM/A9+xCA==\n"
-                "-----END PUBLIC- KEY-----";
-        */
-        //"MFcwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQO9K0u+wryl7pVzNQsdAqm5zHLmgOdaTRNqlrJpXCRjTo0knA9QvnKc3eiVU3ety51dXJgmmzQpowqTzPwPfsQg="; //public without prefix
-        //"MFYwEwYHKoZIzj0CAQYIKoZIzj0DAQcDOe9K0u+wryl7pVzNQsdAqm5zHLmgOdaTRNqlrJpXCRjTo0knA9QvnKc3eiVU3ety51dXJgmmzQpowqTzPwPfsQ=="; // public but missing one byte
-
-        // valid private key. openssl format.
-        /*
-        "-----BEGIN PRIVATE KEY-----"
-        "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQglA3/"
-        "ruYlqJ84hCNm"
-        "jsHgjlQgMtXqrB6AvlkTFpM7aoShRANCAATvStLvsK8pe6VczULHQKpucxy5oDnW"
-        "k0TapayaVwkY06NJJwPUL5ynN3olVN3rcudXVyYJps0KaMKk8z8D37EI"
-        "-----END PRIVATE KEY-----";
-        */
-
-        // private key but private part missing a byte
-        //"MIGGAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBGwwagIBAQQfDf+u5iWonziEI2aOweCOVCAy1eqsHoC+WRMWkztqhKFEA0IABO9K0u+wryl7pVzNQsdAqm5zHLmgOdaTRNqlrJpXCRjTo0knA9QvnKc3eiVU3ety51dXJgmmzQpowqTzPwPfsQg=";
-
-        // private key but both private and public parts are too short
-        //"MIFmAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBEwwSgIBAQQfDf+u5iWonziEI2aOweCOVCAy1eqsHoC+WRMWkztqhKEkAyIABO9K0u+wryl7pVzNQsdAqm5zHLmgOdaTRNqlrJpXCRjT";
-
-        // valid private key but private and public parts are swapped
-        //"MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAaFEA0IABO9K0u+wryl7pVzNQsdAqm5zHLmgOdaTRNqlrJpXCRjTo0knA9QvnKc3eiVU3ety51dXJgmmzQpowqTzPwPfsQgEIJQN/67mJaifOIQjZo7B4I5UIDLV6qwegL5ZExaTO2qE";
-
-        // public key too short
-        //"MIEfAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBAIwAwMBAA==";
-
-        // valid private key.. different format from https://8gwifi.org/sshfunctions.jsp
-        /*
-        "-----BEGIN EC PRIVATE KEY-----"
-        "MHcCAQEEICASnnyHNEvmRA0O/6pry6fN+aBMMbcO2grE6xY4KGyUoAoGCCqGSM49"
-        "AwEHoUQDQgAEUNBc8YzBXWUb40QqzQrJeYYCDeYKt2jboFDkwqvaUMBOWQFx9dOT"
-        "yBNZK8uyTExwGbg0uCJGOB/6pW8qfnMJvw=="
-        "-----END EC PRIVATE KEY-----";
-        */
-
-        // valid public key. different format https://8gwifi.org/ecfunctions.jsp
-        //"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEj4G5Z4KkAaSrfrprM09jVxiEmPMg\nAEE+GR64NpC67AZgZ5IEi+hD7BugLqHSeoB/u0MBTBQaM99HDTx7btDo8Q==";
-
-        // valid signature from openssl
-        "MEQCIE3W89WYksf3jVeN+y1GNLDJajllz4jMkeV8LfuZuvfWAiBgxS5AL+drqdq4jvfrywK6aOZAX96b/cfagNHR8hOuww==";
-
-    // valid signature with prefix
-    //"MEUCID6Yl2S2Se7uu9hhcV5zPsw9+rNBnIpQ8hXSujuvvWg4AiEAxctC299uLI85Yi6nmJpnwtFgnqOB5TsrJpVjGnR/2Uc=";
-
-    // signature with bytes missing
-    //"MEICH5iXZLZJ7u672GFxXnM+zD36s0GcilDyFdK6O6+9aDgCH8tC299uLI85Yi6nmJpnwtFgnqOB5TsrJpVjGnR/2Uc=";
-
-    // signature with on algo has right number of bytes
-    //"MEMCH5iXZLZJ7u672GFxXnM+zD36s0GcilDyFdK6O6+9aDgCIMtC299uLI85Yi6nmJpnwtFgnqOB5TsrJpVjGnR/2UcL";
-
-    uint8_t out[64];
-
-    int lenz = 3;
-    int res;
-    res = pemExtract(sample, EC_P256_PUBLIC_KEY, out, &lenz);
-    res = pemExtract(sample, EC_P256_PRIVATE_KEY, out, &lenz);
-    res = pemExtract(sample, EC_P256_SIGNATURE, out, &lenz);
-
-    printk("%d", res);
-
     if (strlen(message) <= sizeof(info->signatureInfo.message) - 1)
         strcpy(info->signatureInfo.message, message);
 
-    int len;
-    base64_decode(info->signatureInfo.signature, sizeof(info->signatureInfo.signature), &len, signature, strlen(signature));
+    int len = 0;
+    int res = pemExtract(signature, EC_P256_SIGNATURE, info->signatureInfo.signature, &len);
+
+    if (0 == len)
+    {
+        bootLog("ERROR: Setting signature for %s. Failed to parse argument. Expecting PEM-formatted prime2561v1 signature.", info->imageName);
+        return BOOT_ERROR_FAILED_PARSE;
+    }
+
+    if (res < 0)
+    {
+        bootLog("WARNING: Setting signature for %s. Expecting PEM-formatted prime2561v1 signature. Not sure what the given signature is but I'll try it.\n", info->imageName);
+    }
+
+    return BOOT_ERROR_SUCCESS;
 }
 
-void image_setEncryption(struct ImageInfo *info, const char *pubKey, enum EncryptionMethod method, size_t encryptedSize)
+enum BootError appImage_setEncryption(struct AppImageInfo *info, const char *pubKey, enum EncryptionMethod method, size_t encryptedSize)
 {
-    int len;
-    base64_decode(info->encryption.pubKey, sizeof(info->encryption.pubKey), &len, pubKey, strlen(pubKey));
+    int len = 0;
+    int res = pemExtract(pubKey, EC_P256_PUBLIC_KEY, info->encryption.pubKey, &len);
+
+    if (0 == len)
+    {
+        bootLog("ERROR: Setting encryption key for %s. Failed to parse argument. Expecting PEM-formatted prime2561v1 public key.", info->imageName);
+        return BOOT_ERROR_FAILED_PARSE;
+    }
+
+    if (res < 0)
+    {
+        bootLog("WARNING: Setting encryption key for %s. Expecting PEM-formatted prime2561v1 public key. Not sure what the given key is but I'll try it.\n", info->imageName);
+    }
 
     info->encryption.method = method;
     info->encryption.encryptedSize = encryptedSize;
 
     // invalidate the image
-    image_setValid(info, false);
+    appImage_setValid(info, false);
 }
 
-void image_setValid(struct ImageStore *info, bool valid)
+void appImage_setValid(struct AppImageStore *info, bool valid)
 {
     info->isValid = valid;
 }
@@ -199,7 +156,7 @@ void bootInfo_setCurrentVariant(struct BootInfo *info, const char *variant)
         strcpy(info->currentVariant, variant);
 }
 
-void image_setLoadRequest(struct ImageInfo *info)
+void appImage_setLoadRequest(struct AppImageInfo *info)
 {
     if (0 == info->loadRequests)
     {
@@ -216,17 +173,17 @@ void image_setLoadRequest(struct ImageInfo *info)
     }
 }
 
-void image_clearLoadRequest(struct ImageInfo *info)
+void appImage_clearLoadRequest(struct AppImageInfo *info)
 {
     info->loadAttempts = info->loadRequests;
 }
 
-bool image_hasLoadRequest(struct ImageInfo *info)
+bool appImage_hasLoadRequest(struct AppImageInfo *info)
 {
     return info->loadRequests != info->loadAttempts;
 }
 
-bool image_isCurrent(struct ImageInfo *info, struct BootInfo *bootInfo)
+bool appImage_isCurrent(struct AppImageInfo *info, struct BootInfo *bootInfo)
 {
     return 0 == memcmp(&info->signatureInfo, &bootInfo->currentImage.signatureInfo, sizeof(info->signatureInfo));
 }
@@ -298,10 +255,8 @@ struct json_obj_descr descr[DESCR_ARRAY_SIZE] = {
     JSON_OBJ_DESCR_PRIM(struct SignatureMessage, sha256, JSON_TOK_STRING),
 };
 
-int image_verifySignature(const struct ImageInfo *imageInfo, struct SignatureMessage *messageOut)
+int appImage_getMessageSignature(const struct AppImageInfo *imageInfo, struct SignatureMessage *messageOut, char *messageBuff)
 {
-    char messageBuff[sizeof(imageInfo->signatureInfo.message)];
-
     strcpy(messageBuff, imageInfo->signatureInfo.message);
 
     int parseResult = json_obj_parse(messageBuff, strlen(messageBuff), descr, DESCR_ARRAY_SIZE, messageOut);
@@ -318,8 +273,22 @@ int image_verifySignature(const struct ImageInfo *imageInfo, struct SignatureMes
         bootLog("ERROR: Image %s has invalid signature message", imageInfo->imageName);
         return BOOT_ERROR_SIGNATURE_MESSAGE_INVALID;
     }
+}
 
-    const uint8_t *signerKey;
+int appImage_verifySignature(const struct AppImageInfo *imageInfo)
+{
+    struct SignatureMessage messageOut;
+    char messageBuff[sizeof(imageInfo->signatureInfo.message)];
+
+    int res = appImage_getMessageSignature(imageInfo, &messageOut, messageBuff);
+
+    if (res < 0)
+    {
+        return res;
+    }
+
+    const uint8_t signerKey[64];
+    int len = 0;
 
     if (0 == strcmp(messageOut->provider, "zodiac"))
     {
@@ -329,7 +298,19 @@ int image_verifySignature(const struct ImageInfo *imageInfo, struct SignatureMes
             bootLog("ERROR: Image %s is signed by %s but this provider is not expected to sign this variant pattern (%s)", imageInfo->imageName, messageOut->provider, messageOut->variantPattern);
             return BOOT_ERROR_SIGNER_HAS_LIMITED_PERMISSIONS;
         }
-        signerKey = zodiacSignerPub;
+
+        int res = pemExtract(zodiacSignerPub, EC_P256_PUBLIC_KEY, signerKey, &len);
+
+        if (len <= 0)
+        {
+            bootLog("ERROR: Parsing public key for signer %s failed. Expecting PEM-formatted prime256v1 string.", messageOut->provider);
+            return BOOT_ERROR_FAILED_PARSE;
+        }
+
+        if (res < 0)
+        {
+            bootLog("WARNING: Reading public key for %s. Expecting PEM-formatted prime2561v1 string. Not sure what the given string is but I'll try it.\n", messageOut->provider);
+        }
     }
     else
     {
@@ -356,19 +337,29 @@ int image_verifySignature(const struct ImageInfo *imageInfo, struct SignatureMes
     return BOOT_ERROR_SUCCESS;
 }
 
-int image_verify(const struct ImageStore *store, const struct BootInfo *bootInfo, struct SignatureMessage *messageOut)
+int appImage_verify(const struct AppImageStore *store, const struct BootInfo *bootInfo, struct SignatureMessage *messageOut, char *messageBuff)
 {
     if (!store->isValid)
     {
         bootLog("ERROR: Image %s is marked not valid", store->imageInfo.imageName);
-        return BOOT_ERROR_IMAGE_NOT_VALID;
+        return BOOT_ERROR_appImage_NOT_VALID;
     }
 
-    int sigVer = image_verifySignature(&store->imageInfo, messageOut);
+    int sigVer = appImage_verifySignature(&store->imageInfo);
 
     if (BOOT_ERROR_SUCCESS != sigVer)
     {
         return sigVer;
+    }
+
+    struct SignatureMessage messageOut;
+    char messageBuff[sizeof(store->imageInfo.signatureInfo.message)];
+
+    int res = appImage_getMessageSignature(&store->imageInfo, &messageOut, messageBuff);
+
+    if (res < 0)
+    {
+        return res;
     }
 
 #if 1 // Checking variant pattern match should be done by the application
@@ -380,16 +371,34 @@ int image_verify(const struct ImageStore *store, const struct BootInfo *bootInfo
     }
 #endif
 
-    // verify image size
-    if (messageOut->size > store->imageInfo.encryption.encryptedSize)
+    // check sha
+    size_t len;
+    uint8_t sha[TC_SHA256_DIGEST_SIZE];
+
+    int res = base64_decode(sha, sizeof(sha), &len, messageOut->sha256, strlen(messageOut->sha256));
+
+    if (res < 0)
     {
-        bootLog("ERROR: Image %s has invalid size - %d; expected no more than encrypted size (%d)", store->imageInfo.imageName, store->imageInfo.encryption.encryptedSize, messageOut->size);
+        bootLog("ERROR: Image %s has invalid sha256. Expecting base-64 encoded hash.", store->imageInfo.imageName);
+        return BOOT_ERROR_FAILED_PARSE;
+    }
+
+    // verify image size
+    if ((messageOut->size > store->imageInfo.encryption.encryptedSize) && store->imageInfo.encryption.encryptedSize > 0)
+    {
+        bootLog("ERROR: Image %s has invalid size of %d; expected no more than encrypted size (%d)", store->imageInfo.imageName, messageOut->size, store->imageInfo.encryption.encryptedSize);
         return BOOT_ERROR_INVALID_SIZE;
     }
 
-    if (messageOut->size > BOOT_MAX_IMAGE_SIZE)
+    if (messageOut->size == 0)
     {
-        bootLog("ERROR: Image %s has invalid size - %d; larger than maximum allowed (%d)", store->imageInfo.imageName, store->imageInfo.encryption.encryptedSize, BOOT_MAX_IMAGE_SIZE);
+        bootLog("ERROR: Image %s has invalid size of %d; expected none-zero size.", store->imageInfo.imageName, store->imageInfo.encryption.encryptedSize);
+        return BOOT_ERROR_INVALID_SIZE;
+    }
+
+    if (messageOut->size > BOOT_MAX_APPIMAGE_SIZE)
+    {
+        bootLog("ERROR: Image %s has invalid size of %d; larger than maximum allowed (%d)", store->imageInfo.imageName, messageOut->size, BOOT_MAX_APPIMAGE_SIZE);
         return BOOT_ERROR_INVALID_SIZE;
     }
 
@@ -457,4 +466,11 @@ void bootLog(const char *format, ...)
     int wres = logFlash->write(logIndex, buffer, strlen(buffer) + 1);
 
     logIndex += wres >= 0 ? wres : 0;
+}
+
+void appImage_setStore(struct AppImageStore *info, enum AppImageStorage storage, size_t offset, size_t maxSize)
+{
+    info->storage = storage;
+    info->startAddr = offset;
+    info->maxSize = maxSize;
 }

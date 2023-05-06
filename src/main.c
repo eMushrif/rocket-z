@@ -14,8 +14,6 @@
 
 #include "rocket-z/bootloader.h"
 
-void loadImage(struct ImageInfo *img);
-
 static const struct device *internalFlashDeviceId;
 
 int zephyrFlashRead(size_t address, void *data, size_t size)
@@ -26,6 +24,8 @@ int zephyrFlashRead(size_t address, void *data, size_t size)
 
 int zephyrFlashErase(size_t address, size_t size)
 {
+	// allign the erase region with the BOOT_FLASH_BLOCK_SIZE
+	size = size % BOOT_FLASH_BLOCK_SIZE ? size + BOOT_FLASH_BLOCK_SIZE - size % BOOT_FLASH_BLOCK_SIZE : size;
 	return flash_erase(internalFlashDeviceId, address, size);
 }
 
@@ -49,7 +49,7 @@ struct FlashDevice flashDevice_internalFlash = {
 	.lock = zephyrFlashLock,
 };
 
-struct FlashDevice *bootInfo_getFlashDevice(enum ImageStorage storage)
+struct FlashDevice *bootInfo_getFlashDevice(enum AppImageStorage storage)
 {
 	switch (storage)
 	{
