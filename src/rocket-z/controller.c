@@ -255,11 +255,17 @@ struct json_obj_descr descr[DESCR_ARRAY_SIZE] = {
     JSON_OBJ_DESCR_PRIM(struct SignatureMessage, sha256, JSON_TOK_STRING),
 };
 
-int appImage_getMessageSignature(const struct AppImageInfo *imageInfo, struct SignatureMessage *messageOut, char *messageBuff)
+int appImage_getSignatureMessage(const struct AppImageInfo *imageInfo, struct SignatureMessage *messageOut, char *messageBuff)
 {
     strcpy(messageBuff, imageInfo->signatureInfo.message);
 
     int parseResult = json_obj_parse(messageBuff, strlen(messageBuff), descr, DESCR_ARRAY_SIZE, messageOut);
+
+    if (parseResult < 0)
+    {
+        bootLog("ERROR: Image %s has invalid signature message. Parser returned error %d.", imageInfo->imageName, parseResult);
+        return BOOT_ERROR_SIGNATURE_MESSAGE_INVALID; 
+    }
 
     if (!((parseResult & 127) == 127))
     {
@@ -278,9 +284,9 @@ int appImage_getMessageSignature(const struct AppImageInfo *imageInfo, struct Si
 int appImage_verifySignature(const struct AppImageInfo *imageInfo)
 {
     struct SignatureMessage messageOut;
-    char messageBuff[sizeof(imageInfo->signatureInfo.message)];
+    char messageBuff[BOOT_SIGNATURE_MESSAGE_MAX_SIZE];
 
-    int res = appImage_getMessageSignature(imageInfo, &messageOut, messageBuff);
+    int res = appImage_getSignatureMessage(imageInfo, &messageOut, messageBuff);
 
     if (res < 0)
     {
@@ -290,12 +296,12 @@ int appImage_verifySignature(const struct AppImageInfo *imageInfo)
     const uint8_t signerKey[64];
     int len = 0;
 
-    if (0 == strcmp(messageOut->provider, "zodiac"))
+    if (0 == strcmp(messageOut.provider, "zodiac"))
     {
         // make sure this provider is allowed to sign given pattern
-        if (!isMatch(messageOut->variantPattern, "*")) // zodiac is allowed to sign any variant
+        if (!isMatch(messageOut.variantPattern, "*")) // zodiac is allowed to sign any variant
         {
-            bootLog("ERROR: Image %s is signed by %s but this provider is not expected to sign this variant pattern (%s)", imageInfo->imageName, messageOut->provider, messageOut->variantPattern);
+            bootLog("ERROR: Image %s is signed by %s but this provider is not expected to sign this variant pattern (%s)", imageInfo->imageName, messageOut.provider, messageOut.variantPattern);
             return BOOT_ERROR_SIGNER_HAS_LIMITED_PERMISSIONS;
         }
 
@@ -303,18 +309,18 @@ int appImage_verifySignature(const struct AppImageInfo *imageInfo)
 
         if (len <= 0)
         {
-            bootLog("ERROR: Parsing public key for signer %s failed. Expecting PEM-formatted prime256v1 string.", messageOut->provider);
+            bootLog("ERROR: Parsing public key for signer %s failed. Expecting PEM-formatted prime256v1 string.", messageOut.provider);
             return BOOT_ERROR_FAILED_PARSE;
         }
 
         if (res < 0)
         {
-            bootLog("WARNING: Reading public key for %s. Expecting PEM-formatted prime2561v1 string. Not sure what the given string is but I'll try it.\n", messageOut->provider);
+            bootLog("WARNING: Reading public key for %s. Expecting PEM-formatted prime2561v1 string. Not sure what the given string is but I'll try it.\n", messageOut.provider);
         }
     }
     else
     {
-        bootLog("ERROR: Image %s is signed by unknown provider %s", imageInfo->imageName, messageOut->provider);
+        bootLog("ERROR: Image %s is signed by unknown provider %s", imageInfo->imageName, messageOut.provider);
         return false;
     }
 
@@ -337,7 +343,7 @@ int appImage_verifySignature(const struct AppImageInfo *imageInfo)
     return BOOT_ERROR_SUCCESS;
 }
 
-int appImage_verify(const struct AppImageStore *store, const struct BootInfo *bootInfo, struct SignatureMessage *messageOut, char *messageBuff)
+int appImage_verify(const struct AppImageStore *store, const struct BootInfo *bootInfo)
 {
     if (!store->isValid)
     {
@@ -349,13 +355,14 @@ int appImage_verify(const struct AppImageStore *store, const struct BootInfo *bo
 
     if (BOOT_ERROR_SUCCESS != sigVer)
     {
+        bootLog("ERROR: Failed to verify signature");
         return sigVer;
     }
 
     struct SignatureMessage messageOut;
-    char messageBuff[sizeof(store->imageInfo.signatureInfo.message)];
+    char messageBuff[BOOT_SIGNATURE_MESSAGE_MAX_SIZE];
 
-    int res = appImage_getMessageSignature(&store->imageInfo, &messageOut, messageBuff);
+    int res = appImage_getSignatureMessage(&store->imageInfo, &messageOut, messageBuff);
 
     if (res < 0)
     {
@@ -363,9 +370,9 @@ int appImage_verify(const struct AppImageStore *store, const struct BootInfo *bo
     }
 
 #if 1 // Checking variant pattern match should be done by the application
-    if (!isMatch(bootInfo->currentVariant, messageOut->variantPattern))
+    if (!isMatch(bootInfo->currentVariant, messageOut.variantPattern))
     {
-        bootLog("WARNING: Image %s is signed for pattern %s that doesn't match current variant (%s)", store->imageInfo.imageName, messageOut->variantPattern, bootInfo->currentVariant);
+        bootLog("WARNING: Image %s is signed for pattern %s that doesn't match current variant (%s)", store->imageInfo.imageName, messageOut.variantPattern, bootInfo->currentVariant);
         bootLog("HINT: use bootInfo_setCurrentVariant() to set the current variant");
         // return false;
     }
@@ -375,7 +382,7 @@ int appImage_verify(const struct AppImageStore *store, const struct BootInfo *bo
     size_t len;
     uint8_t sha[TC_SHA256_DIGEST_SIZE];
 
-    int res = base64_decode(sha, sizeof(sha), &len, messageOut->sha256, strlen(messageOut->sha256));
+    res = base64_decode(sha, sizeof(sha), &len, messageOut.sha256, strlen(messageOut.sha256));
 
     if (res < 0)
     {
@@ -384,21 +391,21 @@ int appImage_verify(const struct AppImageStore *store, const struct BootInfo *bo
     }
 
     // verify image size
-    if ((messageOut->size > store->imageInfo.encryption.encryptedSize) && store->imageInfo.encryption.encryptedSize > 0)
+    if ((messageOut.size > store->imageInfo.encryption.encryptedSize) && store->imageInfo.encryption.encryptedSize > 0)
     {
-        bootLog("ERROR: Image %s has invalid size of %d; expected no more than encrypted size (%d)", store->imageInfo.imageName, messageOut->size, store->imageInfo.encryption.encryptedSize);
+        bootLog("ERROR: Image %s has invalid size of %d; expected no more than encrypted size (%d)", store->imageInfo.imageName, messageOut.size, store->imageInfo.encryption.encryptedSize);
         return BOOT_ERROR_INVALID_SIZE;
     }
 
-    if (messageOut->size == 0)
+    if (messageOut.size == 0)
     {
         bootLog("ERROR: Image %s has invalid size of %d; expected none-zero size.", store->imageInfo.imageName, store->imageInfo.encryption.encryptedSize);
         return BOOT_ERROR_INVALID_SIZE;
     }
 
-    if (messageOut->size > BOOT_MAX_APPIMAGE_SIZE)
+    if (messageOut.size > BOOT_MAX_APPIMAGE_SIZE)
     {
-        bootLog("ERROR: Image %s has invalid size of %d; larger than maximum allowed (%d)", store->imageInfo.imageName, messageOut->size, BOOT_MAX_APPIMAGE_SIZE);
+        bootLog("ERROR: Image %s has invalid size of %d; larger than maximum allowed (%d)", store->imageInfo.imageName, messageOut.size, BOOT_MAX_APPIMAGE_SIZE);
         return BOOT_ERROR_INVALID_SIZE;
     }
 

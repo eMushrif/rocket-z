@@ -45,9 +45,6 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
             // save boot info
             bootInfo_save(BOOT_INFO_ADDR, bootInfo);
 
-            struct SignatureMessage signatureMessage;
-            char messageBuff[sizeof(imageInfo->signatureInfo.message)];
-
             // verify new image
             int verified = appImage_verify(&bootInfo->img[i], bootInfo);
 
@@ -57,7 +54,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
                 continue;
             }
 
-            int res = loadImage(&bootInfo->img[i], bootInfo, &signatureMessage);
+            int res = loadImage(&bootInfo->img[i], bootInfo);
 
             if (res <= 0)
             {
@@ -78,7 +75,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
     // run loaded image
 }
 
-int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo, struct SignatureMessage *signatureMessage)
+int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo)
 {
     bootLog("INFO: Loading image %s", store->imageInfo.imageName);
 
@@ -93,9 +90,15 @@ int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo, struct Sig
         uint8_t iv[16];
     } secret;
 
-    internalFlash->read(BOOT_KEY_ADDR, prv, sizeof(prv));
+    int res = internalFlash->read(BOOT_KEY_ADDR, prv, sizeof(prv));
 
-    int res;
+    if (res < 0)
+    {
+        // clear prv
+        memset(prv, 0x00, sizeof(prv));
+        bootLog("ERROR: Failed to read private key. Error %d.", res);
+        return res;
+    }
 
     res = uECC_shared_secret(store->imageInfo.encryption.pubKey, prv, &secret, uECC_secp256r1());
 
@@ -116,11 +119,6 @@ int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo, struct Sig
 
         return -1;
     }
-
-    struct tc_sha256_state_struct digestSha;
-    tc_sha256_init(&digestSha);
-    tc_sha256_update(&digestSha, &secret, sizeof(secret));
-    tc_sha256_final(&secret, &digestSha);
 
     // Find current image and set rollback image
     for (int i = 0; i < ARRAY_SIZE(bootInfo->img); i++)
@@ -152,7 +150,7 @@ int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo, struct Sig
 
     // load image
 
-    res = transferToApp(bootInfo_getFlashDevice(store->storage), store->startAddr, store->imageInfo.encryption.encryptedSize, secret.key, secret.iv, signatureMessage);
+    res = transferToApp(store, secret.key, secret.iv);
 
     if (res < 0)
     {
@@ -168,8 +166,20 @@ int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo, struct Sig
     return 0;
 }
 
-int transferToApp(const struct FlashDevice *device, size_t startAddr, size_t size, const uint8_t *key, const uint8_t *iv)
+int transferToApp(struct AppImageStore* store, const uint8_t* key, const uint8_t* iv)
 {
+    struct SignatureMessage messageOut;
+    char messageBuff[sizeof(store->imageInfo.signatureInfo.message)];
+
+    int res = appImage_getSignatureMessage(&store->imageInfo, &messageOut, messageBuff);
+
+    if (res < 0)
+    {
+        return res;
+    }
+
+    struct FlashDevice* device = bootInfo_getFlashDevice(store->storage);
+
     // one buffer for cipher, decipher including iv
 
     const size_t blockSize = BOOT_FLASH_BLOCK_SIZE;
@@ -189,11 +199,11 @@ int transferToApp(const struct FlashDevice *device, size_t startAddr, size_t siz
 
     tc_sha256_init(&digestSha);
 
-    for (int i = 0; i < size; i += blockSize)
+    for (int i = 0; i < store->imageInfo.encryption.encryptedSize; i += blockSize)
     {
-        size_t sizeAct = MIN(blockSize, size - i);
+        size_t sizeAct = MIN(blockSize, store->imageInfo.encryption.encryptedSize - i);
 
-        int res = device->read(startAddr + i, cipher, sizeAct);
+        int res = device->read(store->startAddr + i, cipher, sizeAct);
 
         if (res <= 0)
         {
@@ -209,7 +219,7 @@ int transferToApp(const struct FlashDevice *device, size_t startAddr, size_t siz
             return -1;
         }
 
-        tc_sha256_update(&digestSha, &cipher, MIN(sizeAct, signatureMessage->size - i));
+        tc_sha256_update(&digestSha, &cipher, MIN(sizeAct, messageOut.size - i));
 
         res = internalFlash->write(BOOT_APP_ADDR + i, decipher, sizeAct);
 
@@ -223,16 +233,6 @@ int transferToApp(const struct FlashDevice *device, size_t startAddr, size_t siz
         memcpy(_iv, cipher + sizeAct - TC_AES_BLOCK_SIZE, TC_AES_BLOCK_SIZE);
     }
 
-    struct SignatureMessage messageOut;
-    char messageBuff[sizeof(store->imageInfo.signatureInfo.message)];
-
-    int res = appImage_getMessageSignature(&store->imageInfo, &messageOut, messageBuff);
-
-    if (res < 0)
-    {
-        return res;
-    }
-
     uint8_t digest[TC_SHA256_DIGEST_SIZE];
     uint8_t sha[TC_SHA256_DIGEST_SIZE];
 
@@ -240,7 +240,7 @@ int transferToApp(const struct FlashDevice *device, size_t startAddr, size_t siz
 
     memset(sha, 0x00, sizeof(sha));
 
-    base64_decode(sha, sizeof(sha), &len, signatureMessage->sha256, strlen(signatureMessage->sha256));
+    base64_decode(sha, sizeof(sha), &len, messageOut.sha256, strlen(messageOut.sha256));
 
     tc_sha256_final(digest, &digestSha);
 

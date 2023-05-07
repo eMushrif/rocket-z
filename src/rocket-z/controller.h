@@ -298,10 +298,9 @@ bool appImage_isCurrent(struct AppImageInfo *info, struct BootInfo *bootInfo);
 /**
  * \brief Check if image signature is valid
  * \param imageInfo Pointer to the image information structure
- * \param messageOut Pointer to the output of signature message data.
  * \return 0 if verified, BootError otherwise
  */
-int appImage_verifySignature(const struct AppImageInfo *imageInfo, struct SignatureMessage *messageOut);
+int appImage_verifySignature(const struct AppImageInfo *imageInfo);
 
 /**
  * \brief Performs multiple checks to verify that the image is loadable. Includes signature verification.
@@ -314,9 +313,11 @@ int appImage_verify(const struct AppImageStore *imageStore, const struct BootInf
 /**
  * \brief Get the signature message data for an image
  * \param imageInfo Pointer to the image information structure
+ * \param messageOut Pointer to the output of signature message data.
+ * \param messageBuff A buffer where message strings are stored. Must be at least of size BOOT_SIGNATURE_MESSAGE_MAX_SIZE
  * \return 0 if verified, BootError otherwise
  */
-int appImage_getMessageSignature(const struct AppImageInfo *imageInfo);
+int appImage_getSignatureMessage(const struct AppImageInfo *imageInfo, struct SignatureMessage *messageOut, char *messageBuff);
 
 /**
  * \brief Log event
