@@ -6,6 +6,9 @@
 #include <zephyr/sys/base64.h>
 #include <tinycrypt/sha256.h>
 #include <tinycrypt/ecc_dsa.h>
+#include <tinycrypt/sha256.h>
+#include <tinycrypt/ecc_dh.h>
+#include <tinycrypt/cbc_mode.h>
 #include "pem/pem-decode.h"
 
 struct BootInfoBuffer
@@ -17,6 +20,9 @@ struct BootInfo *bootInfo_load(uint32_t address)
 {
 
     struct BootInfo *result = (struct BootInfo *)k_malloc(sizeof(struct BootInfoBuffer));
+
+    if (NULL == result)
+        return NULL;
 
     bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->read(address, result, sizeof(struct BootInfo));
 
@@ -42,6 +48,14 @@ struct BootInfo *bootInfo_load(uint32_t address)
 
     // copy the original boot info to the second half of the buffer
     memcpy(&((struct BootInfoBuffer *)result)->bootInfo[1], &((struct BootInfoBuffer *)result)->bootInfo[0], sizeof(struct BootInfo));
+
+
+    //make sure appStore parameters are not changed
+    result->appStore.startAddr = BOOT_APP_ADDR;
+    result->appStore.storage = BOOT_IMG_STORAGE_INTERNAL_FLASH;
+    result->appStore.maxSize = BOOT_MAX_APPIMAGE_SIZE;
+
+    bootInfo_save(address, result);
 
     return result;
 }
@@ -185,7 +199,7 @@ bool appImage_hasLoadRequest(struct AppImageInfo *info)
 
 bool appImage_isCurrent(struct AppImageInfo *info, struct BootInfo *bootInfo)
 {
-    return 0 == memcmp(&info->signatureInfo, &bootInfo->currentImage.signatureInfo, sizeof(info->signatureInfo));
+    return 0 == memcmp(&info->signatureInfo, &bootInfo->appStore.imageInfo.signatureInfo, sizeof(info->signatureInfo));
 }
 
 bool isMatch(const char *str, const char *pattern)
@@ -480,4 +494,238 @@ void appImage_setStore(struct AppImageStore *info, enum AppImageStorage storage,
     info->storage = storage;
     info->startAddr = offset;
     info->maxSize = maxSize;
+}
+
+struct Secret
+{
+    uint8_t key[16];
+    uint8_t iv[16];
+    struct tc_aes_key_sched_struct sched;
+
+};
+  
+int appImage_transfer(struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfo *bootInfo)
+{
+    if (fromStore->imageInfo.encryption.encryptedSize > toStore->maxSize)
+    {
+        bootLog("ERROR: Image %s is too large to fit in storage", fromStore->imageInfo.imageName);
+        return BOOT_ERROR_INVALID_SIZE;
+    }
+    
+    struct Secret secret;
+
+    bool toAppStore = toStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && toStore->startAddr == BOOT_APP_ADDR;
+    bool fromAppStore = fromStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && fromStore->startAddr == BOOT_APP_ADDR;
+
+    if (toAppStore || fromAppStore)
+    {
+        uint8_t prv[32];
+
+        struct FlashDevice* internalFlash = bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH);
+
+        int res = internalFlash->read(BOOT_KEY_ADDR, prv, sizeof(prv));
+
+        if (res < 0)
+        {
+            // clear prv
+            memset(prv, 0x00, sizeof(prv));
+            bootLog("ERROR: Failed to read private key. Error %d.", res);
+            return res;
+        }
+
+        res = uECC_shared_secret(fromStore->imageInfo.encryption.pubKey, prv, &secret, uECC_secp256r1());
+
+        if (0xFF == prv[0])
+        {
+            bootLog("WARNING: Private key might have not been stored in flash or is erased");
+        }
+
+        // clear prv
+        memset(prv, 0x00, sizeof(prv));
+
+        if (res != 1)
+        {
+            // clear secret
+            memset(&secret, 0x00, sizeof(secret));
+
+            bootLog("ERROR: Failed to derive encryption key");
+
+            return -1;
+        }
+
+        struct tc_sha256_state_struct digestSha;
+        tc_sha256_init(&digestSha);
+        tc_sha256_update(&digestSha, &secret, sizeof(secret.iv) + sizeof(secret.key));
+        tc_sha256_final(&secret, &digestSha);
+
+        if (toAppStore) tc_aes128_set_decrypt_key(&secret.sched, &secret.key);
+        else tc_aes128_set_encrypt_key(&secret.sched, &secret.key);
+    }
+
+    appImage_setValid(toStore, false);
+
+    // update imageInfo
+    memcpy(&toStore->imageInfo, &fromStore->imageInfo, sizeof(struct AppImageInfo));
+
+    if (NULL != bootInfo) bootInfo_save(BOOT_INFO_ADDR, bootInfo);
+
+    int res = appImage_transfer_(fromStore, toStore, (toAppStore || fromAppStore) ? &secret : NULL);
+
+    memset(&secret, 0x00, sizeof(secret));
+
+    if (res < 0)
+    {
+        bootLog("ERROR: Failed to transfer image. Error %d.", res);
+        return res;
+    }
+
+    appImage_setValid(toStore, fromStore->isValid);
+}
+
+int appImage_transfer_(struct AppImageStore *fromStore, struct AppImageStore *toStore, struct Secret *secret)
+{
+    struct FlashDevice* fromDevice = bootInfo_getFlashDevice(fromStore->storage);
+    struct FlashDevice* toDevice = bootInfo_getFlashDevice(toStore->storage);
+
+    // Erase image area
+    int res = toDevice->erase(toStore->startAddr, MAX(fromStore->imageInfo.encryption.encryptedSize, fromStore->imageInfo.encryption.encryptedSize));
+
+    if (res < 0)
+    {
+        bootLog("ERROR: Failed to erase image area. Error %d.", res);
+        return res;
+    }
+
+    bool toAppStore = toStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && toStore->startAddr == BOOT_APP_ADDR;
+    bool fromAppStore = fromStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && fromStore->startAddr == BOOT_APP_ADDR;
+
+    struct SignatureMessage messageOut;
+    char messageBuff[BOOT_SIGNATURE_MESSAGE_MAX_SIZE];
+
+    if (NULL != secret && (toAppStore || fromAppStore))
+    {
+        int res = appImage_getSignatureMessage(&(toAppStore? fromStore : toStore)->imageInfo, &messageOut, messageBuff);
+
+        if (res < 0)
+        {
+            return res;
+        }
+    }
+
+    // one buffer for cipher, decipher including iv
+
+    const size_t blockSize = BOOT_FLASH_BLOCK_SIZE;
+
+    uint8_t buff[BOOT_FLASH_BLOCK_SIZE + (2 * TC_AES_BLOCK_SIZE)];
+
+    uint8_t *decipher, *cipher, *_iv;
+
+    if (toAppStore)
+    {
+        decipher = buff;
+        _iv = buff + TC_AES_BLOCK_SIZE;
+        cipher = buff + (2 * TC_AES_BLOCK_SIZE);
+        memcpy(_iv, secret->iv, TC_AES_BLOCK_SIZE);
+    }
+    else if (fromAppStore)
+    {
+        _iv = buff;
+        cipher = buff + TC_AES_BLOCK_SIZE; //cipher will have iv prepended
+        decipher = buff + (2 * TC_AES_BLOCK_SIZE);
+        memcpy(_iv, secret->iv, TC_AES_BLOCK_SIZE);
+    }
+
+    if (toAppStore)
+    {
+        for (int i = 0; i < fromStore->imageInfo.encryption.encryptedSize; i += blockSize)
+        {
+            size_t sizeAct = MIN(blockSize, fromStore->imageInfo.encryption.encryptedSize - i);
+
+            int res = fromDevice->read(fromStore->startAddr + i, cipher, sizeAct);
+
+            if (res <= 0)
+            {
+                bootLog("ERROR: Failed to read image data from storage. Error %d.", res);
+                return res;
+            }
+
+            res = tc_cbc_mode_decrypt(decipher, sizeAct, cipher, sizeAct, _iv, &secret->sched);
+
+            if (res != 1)
+            {
+                bootLog("ERROR: Failed to decrypt image data. Error %d.", res);
+                return -1;
+            }
+
+            res = toDevice->write(toStore->startAddr + i, decipher, sizeAct);
+
+            if (res <= 0)
+            {
+                bootLog("ERROR: Failed to write image data. Error %d.", res);
+                return res;
+            }
+
+            // copy new initialization vector
+            memcpy(_iv, cipher + sizeAct - TC_AES_BLOCK_SIZE, TC_AES_BLOCK_SIZE);
+        }
+    }
+    else if (fromAppStore)
+    {
+        for (int i = 0; i < fromStore->imageInfo.encryption.encryptedSize; i += blockSize)
+        {
+            size_t sizeAct = MIN(blockSize, fromStore->imageInfo.encryption.encryptedSize - i);
+
+            int res = fromDevice->read(fromStore->startAddr + i, decipher, sizeAct);
+
+            if (res <= 0)
+            {
+                bootLog("ERROR: Failed to read image data from storage. Error %d.", res);
+                return res;
+            }
+
+            res = tc_cbc_mode_encrypt(cipher - TC_AES_BLOCK_SIZE /* include prepended iv */, sizeAct + TC_AES_BLOCK_SIZE, decipher, sizeAct, _iv, &secret->sched);
+
+            if (res != 1)
+            {
+                bootLog("ERROR: Failed to encrypt image data. Error %d.", res);
+                return -1;
+            }
+
+            res = toDevice->write(toStore->startAddr + i, cipher, sizeAct);
+
+            if (res <= 0)
+            {
+                bootLog("ERROR: Failed to write image data. Error %d.", res);
+                return res;
+            }
+
+            // copy new initialization vector
+            memcpy(_iv, cipher + sizeAct - TC_AES_BLOCK_SIZE, TC_AES_BLOCK_SIZE);
+        }
+    }
+    else
+    {
+        for (int i = 0; i < fromStore->imageInfo.encryption.encryptedSize; i += blockSize)
+        {
+            size_t sizeAct = MIN(blockSize, fromStore->imageInfo.encryption.encryptedSize - i);
+
+            int res = fromDevice->read(fromStore->startAddr + i, buff, sizeAct);
+
+            if (res <= 0)
+            {
+                bootLog("ERROR: Failed to read image data from storage");
+                return res;
+            }
+
+            res = toDevice->write(toStore->startAddr + i, buff, sizeAct);
+
+            if (res <= 0)
+            {
+                bootLog("ERROR: Failed to write image data");
+                return res;
+            }
+        }
+    }
+
+    return 0;
 }

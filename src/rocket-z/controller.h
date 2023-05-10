@@ -172,9 +172,9 @@ struct BootInfo
 
     uint8_t rollbackImageIndex; //< Index of the image to rollback to
 
-    struct AppImageInfo currentImage; //< Information about the currently loaded image
+    struct AppImageStore appStore; //< Information about the currently loaded image
 
-    struct AppImageStore img[2];
+    struct AppImageStore img[3];
 };
 
 /**
@@ -318,6 +318,15 @@ int appImage_verify(const struct AppImageStore *imageStore, const struct BootInf
  * \return 0 if verified, BootError otherwise
  */
 int appImage_getSignatureMessage(const struct AppImageInfo *imageInfo, struct SignatureMessage *messageOut, char *messageBuff);
+
+/**
+ * \brief Transfer an image from one store to another. If the destination is the app area image will be decrypted, if the source is the app area image will be encrypted.
+ * \param fromStore Pointer to the source image store
+ * \param toStore Pointer to the destination image store
+ * \param bootInfo Optional. Pointer to the boot information structure. if not NULL bootInfo will be saved automatically.
+ * \return 0 on success, BootError on error
+*/
+int appImage_transfer(struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfo *bootInfo);
 
 /**
  * \brief Log event

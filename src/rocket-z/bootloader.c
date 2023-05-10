@@ -1,8 +1,5 @@
 #include "bootloader.h"
 #include <string.h>
-#include <tinycrypt/sha256.h>
-#include <tinycrypt/ecc_dh.h>
-#include <tinycrypt/cbc_mode.h>
 #include <zephyr/sys/base64.h>
 
 static struct FlashDevice *internalFlash;
@@ -82,44 +79,6 @@ int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo)
     if (store->imageInfo.encryption.method != ENCRYPTION_EC_P256_AES_128_CBC_SHA_256)
         return; // no other encryption methods supported yet
 
-    uint8_t prv[32];
-
-    struct
-    {
-        uint8_t key[16];
-        uint8_t iv[16];
-    } secret;
-
-    int res = internalFlash->read(BOOT_KEY_ADDR, prv, sizeof(prv));
-
-    if (res < 0)
-    {
-        // clear prv
-        memset(prv, 0x00, sizeof(prv));
-        bootLog("ERROR: Failed to read private key. Error %d.", res);
-        return res;
-    }
-
-    res = uECC_shared_secret(store->imageInfo.encryption.pubKey, prv, &secret, uECC_secp256r1());
-
-    if (0xFF == prv[0])
-    {
-        bootLog("WARNING: Private key might have not been stored in flash or is erased");
-    }
-
-    // clear prv
-    memset(prv, 0x00, sizeof(prv));
-
-    if (res != 1)
-    {
-        // clear secret
-        memset(&secret, 0x00, sizeof(secret));
-
-        bootLog("ERROR: Failed to derive encryption key");
-
-        return -1;
-    }
-
     // Find current image and set rollback image
     for (int i = 0; i < ARRAY_SIZE(bootInfo->img); i++)
     {
@@ -131,124 +90,33 @@ int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo)
         }
     }
 
-    // update currentImage
-    memcpy(&bootInfo->currentImage, &store->imageInfo, sizeof(struct AppImageInfo));
-
-    bootInfo_save(BOOT_INFO_ADDR, bootInfo);
-
-    // Erase image area
-    res = internalFlash->erase(BOOT_APP_ADDR, MAX(store->imageInfo.encryption.encryptedSize, bootInfo->currentImage.encryption.encryptedSize));
-
-    if (res < 0)
-    {
-        memset(&secret, 0x00, sizeof(secret));
-        bootLog("ERROR: Failed to erase image area");
-        return res;
-    }
-
     bootLog("INFO: Starting image transfer");
 
     // load image
 
-    res = transferToApp(store, secret.key, secret.iv);
+    int res = appImage_transfer(store, &bootInfo->appStore, bootInfo);
+
+#if 0 // For testing
+    struct AppImageStore st2;
+
+    st2.maxSize = 0x20000;
+    st2.startAddr = 0x40000;
+    st2.storage = BOOT_IMG_STORAGE_INTERNAL_FLASH;
+
+    res = appImage_transfer(&bootInfo->appStore, &st2, NULL);
+
+    st2.startAddr = 0x60000;
+
+    res = appImage_transfer(store, &st2, NULL);
+#endif
 
     if (res < 0)
     {
-        memset(&secret, 0x00, sizeof(secret));
         bootLog("ERROR: Failed to load image");
         return res;
     }
 
-    memset(&secret, 0x00, sizeof(secret));
-
     bootLog("INFO: Image transfer complete");
-
-    return 0;
-}
-
-int transferToApp(struct AppImageStore* store, const uint8_t* key, const uint8_t* iv)
-{
-    struct SignatureMessage messageOut;
-    char messageBuff[sizeof(store->imageInfo.signatureInfo.message)];
-
-    int res = appImage_getSignatureMessage(&store->imageInfo, &messageOut, messageBuff);
-
-    if (res < 0)
-    {
-        return res;
-    }
-
-    struct FlashDevice* device = bootInfo_getFlashDevice(store->storage);
-
-    // one buffer for cipher, decipher including iv
-
-    const size_t blockSize = BOOT_FLASH_BLOCK_SIZE;
-
-    uint8_t buff[blockSize + (2 * TC_AES_BLOCK_SIZE)];
-
-    uint8_t *decipher = buff;
-    uint8_t *_iv = buff + TC_AES_BLOCK_SIZE;
-    uint8_t *cipher = buff + (2 * TC_AES_BLOCK_SIZE);
-
-    memcpy(_iv, iv, TC_AES_BLOCK_SIZE);
-
-    struct tc_aes_key_sched_struct sched;
-    tc_aes128_set_decrypt_key(&sched, key);
-
-    struct tc_sha256_state_struct digestSha;
-
-    tc_sha256_init(&digestSha);
-
-    for (int i = 0; i < store->imageInfo.encryption.encryptedSize; i += blockSize)
-    {
-        size_t sizeAct = MIN(blockSize, store->imageInfo.encryption.encryptedSize - i);
-
-        int res = device->read(store->startAddr + i, cipher, sizeAct);
-
-        if (res <= 0)
-        {
-            bootLog("ERROR: Failed to read image data from storage");
-            return res;
-        }
-
-        res = tc_cbc_mode_decrypt(decipher, sizeAct, cipher, sizeAct, _iv, &sched);
-
-        if (res != 1)
-        {
-            bootLog("ERROR: Failed to decrypt image data");
-            return -1;
-        }
-
-        tc_sha256_update(&digestSha, &cipher, MIN(sizeAct, messageOut.size - i));
-
-        res = internalFlash->write(BOOT_APP_ADDR + i, decipher, sizeAct);
-
-        if (res <= 0)
-        {
-            bootLog("ERROR: Failed to write image data");
-            return res;
-        }
-
-        // copy new initialization vector
-        memcpy(_iv, cipher + sizeAct - TC_AES_BLOCK_SIZE, TC_AES_BLOCK_SIZE);
-    }
-
-    uint8_t digest[TC_SHA256_DIGEST_SIZE];
-    uint8_t sha[TC_SHA256_DIGEST_SIZE];
-
-    size_t len;
-
-    memset(sha, 0x00, sizeof(sha));
-
-    base64_decode(sha, sizeof(sha), &len, messageOut.sha256, strlen(messageOut.sha256));
-
-    tc_sha256_final(digest, &digestSha);
-
-    if (memcmp(digest, sha, TC_SHA256_DIGEST_SIZE) != 0)
-    {
-        bootLog("ERROR: Image hash does not match signature");
-        return -1;
-    }
 
     return 0;
 }
