@@ -53,7 +53,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
 
             int res = loadImage(&bootInfo->img[i], bootInfo);
 
-            if (res <= 0)
+            if (res < 0)
             {
                 bootLog("ERROR: Failed to load image %d:%s", i, bootInfo->img[i].imageInfo.imageName);
                 continue;
@@ -66,6 +66,31 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
     // lock memory
 
     // verify loaded image
+    int res = appImage_verify(&bootInfo->appStore, bootInfo);
+
+    if (res < 0)
+    {
+        bootLog("ERROR: Failed to verify signature of loaded image");
+        // return;
+    }
+
+    res = appImage_verifyChecksum(&bootInfo->appStore);
+
+    if (res < 0)
+    {
+        bootLog("ERROR: Failed to verify checksum of loaded image");
+        // return;
+    }
+
+#if 0 // For testing
+    res = appImage_verifyChecksum(&bootInfo->img[0]);
+
+    if (res < 0)
+    {
+        bootLog("ERROR: Failed to verify checksum of loaded image");
+        // return;
+    }
+#endif
 
     bootInfo_free(bootInfo);
 

@@ -51,6 +51,7 @@ enum BootError
     BOOT_ERROR_INVALID_SIGNATURE = -5,
     BOOT_ERROR_INVALID_SIZE = -6,
     BOOT_ERROR_FAILED_PARSE = -7,
+    BOOT_ERROR_FAILED_CHECKSUM = -8,
 };
 
 enum FlashLockType
@@ -325,8 +326,15 @@ int appImage_getSignatureMessage(const struct AppImageInfo *imageInfo, struct Si
  * \param toStore Pointer to the destination image store
  * \param bootInfo Optional. Pointer to the boot information structure. if not NULL bootInfo will be saved automatically.
  * \return 0 on success, BootError on error
-*/
+ */
 int appImage_transfer(struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfo *bootInfo);
+
+/**
+ * \brief Perfrom checksum on image
+ * \param store Pointer to the image store
+ * \return 0 if checksum matches signature, BootError on error
+ */
+int appImage_verifyChecksum(const struct AppImageStore *store);
 
 /**
  * \brief Log event
