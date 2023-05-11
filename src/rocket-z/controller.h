@@ -102,8 +102,6 @@ extern "C"
     {
         char imageName[64]; //< Firendly image name. preferablly unique.
 
-        int32_t strikeCountResetVal;
-
         int32_t loadRequests; //< Inverted bit field of load requests
         int32_t loadAttempts; //< Inverted bit field of load attempts
 
@@ -181,6 +179,11 @@ extern "C"
         uint8_t rollbackImageIndex; //< Index of the image to rollback to
 
         struct AppImageStore appStore; //< Information about the currently loaded image
+
+        uint32_t failCountMax; //< Maximum number of times to run the image before marking it as invalid
+
+        uint32_t failFlags; //< Inverted bit field of fail marks
+        uint32_t failClears;
 
         struct AppImageStore img[3];
     };
@@ -342,6 +345,24 @@ extern "C"
      * \return 0 if checksum matches signature, BootError on error
      */
     int appImage_verifyChecksum(const struct AppImageStore *store);
+
+    /**
+     * \brief Get fail count
+     * \param info Pointer to the boot information structure
+     */
+    uint32_t bootInfo_getFailCount(const struct BootInfo *info);
+
+    /**
+     * \brief raise fail flag for the currently running image
+     * \param info Pointer to the boot information structure
+     */
+    void bootInfo_failFlag(struct BootInfo *info);
+
+    /**
+     * \brief clear fail flag for the currently running image
+     * \param info Pointer to the boot information structure
+     */
+    void bootInfo_failClear(struct BootInfo *info);
 
     /**
      * \brief Log event

@@ -49,6 +49,17 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
             if (verified < 0)
             {
                 bootLog("ERROR: Image %d:%s failed verification. Will not be loaded", i, bootInfo->img[i].imageInfo.imageName);
+                appImage_setValid(&bootInfo->img[i], false);
+                continue;
+            }
+
+            // verify checksum of new image
+            verified = appImage_verifyChecksum(&bootInfo->img[i]);
+
+            if (verified < 0)
+            {
+                bootLog("ERROR: Image %d:%s failed checksum verification. Will not be loaded", i, bootInfo->img[i].imageInfo.imageName);
+                appImage_setValid(&bootInfo->img[i], false);
                 continue;
             }
 
@@ -60,31 +71,42 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
                 continue;
             }
 
+            appImage_setValid(&bootInfo->img[i], true);
+            bootInfo_failClear(bootInfo);
+
             break;
         }
     }
 
+    bootInfo_save(BOOT_INFO_ADDR, bootInfo);
+
     // lock memory
-    int lockRes;
-    lockRes = internalFlash->lock(0x0, BOOT_KEY_ADDR, FLASH_LOCK_WRITE);
+    int res;
+    res = internalFlash->lock(0x0, BOOT_KEY_ADDR, FLASH_LOCK_WRITE);
 
-    if (lockRes < 0)
+    if (res < 0)
     {
-        bootLog("WARNING: Failed to lock memory");
+        bootLog("ERROR: Failed to lock boot area. Restarting.");
+        sys_reboot();
+        return;
     }
 
-    lockRes = internalFlash->lock(BOOT_APP_ADDR, MIN(BOOT_MAX_APPIMAGE_SIZE, bootInfo->appStore.imageInfo.encryption.encryptedSize), FLASH_LOCK_WRITE);
+    res = internalFlash->lock(BOOT_APP_ADDR, MIN(BOOT_MAX_APPIMAGE_SIZE, bootInfo->appStore.imageInfo.encryption.encryptedSize), FLASH_LOCK_WRITE);
 
-    if (lockRes < 0)
+    if (res < 0)
     {
-        bootLog("WARNING: Failed to lock memory");
+        bootLog("WARNING: Failed to lock app area. Restarting.");
+        sys_reboot();
+        return;
     }
 
-    lockRes = internalFlash->lock(BOOT_KEY_ADDR, 512, FLASH_LOCK_ALL);
+    res = internalFlash->lock(BOOT_KEY_ADDR, 512, FLASH_LOCK_ALL);
 
-    if (lockRes < 0)
+    if (res < 0)
     {
-        bootLog("WARNING: Failed to lock memory");
+        bootLog("WARNING: Failed to lock secret area. Restarting.");
+        sys_reboot();
+        return;
     }
 
 #if 0 // For testing
@@ -139,13 +161,25 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
 
 #endif
 
+    if (bootInfo->failCountMax > 0)
+    {
+        bootInfo_failFlag(bootInfo);
+        if (bootInfo_getFailCount(bootInfo) > bootInfo->failCountMax)
+        {
+            bootLog("ERROR: Current image failed to clear fail flags many times (max %d). Rolling back", bootInfo->failCountMax);
+            appImage_setValid(&bootInfo->appStore, false);
+            rollback(bootInfo);
+            return;
+        }
+    }
+
     // verify loaded image
-    int res = appImage_verify(&bootInfo->appStore, bootInfo);
+    res = appImage_verify(&bootInfo->appStore, bootInfo);
 
     if (res < 0)
     {
         bootLog("ERROR: Failed to verify signature of loaded image");
-        // return;
+        rollback(bootInfo);
     }
 
     res = appImage_verifyChecksum(&bootInfo->appStore);
@@ -153,7 +187,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
     if (res < 0)
     {
         bootLog("ERROR: Failed to verify checksum of loaded image");
-        // return;
+        rollback(bootInfo);
     }
 
 #if 0 // For testing
@@ -166,9 +200,76 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
     }
 #endif
 
+    appImage_setValid(&bootInfo->appStore, true);
+
+    bootInfo_save(BOOT_INFO_ADDR, bootInfo);
+
     bootInfo_free(bootInfo);
 
-    // run loaded image
+    // jump to loaded image
+    // copid from ncs\v2.3.0\bootloader\mcuboot\boot\zephyr\main.c
+    // irq_lock();
+    //((void (*)(void))BOOT_APP_ADDR)();
+}
+
+void rollback(struct BootInfo *bootInfo)
+{
+    if (bootInfo->appStore.isValid)
+    {
+        // set invalid
+        bootLog("INFO: Restarting to try again");
+        appImage_setValid(&bootInfo->appStore, false);
+        bootInfo_save(BOOT_INFO_ADDR, bootInfo);
+        sys_reboot();
+        return;
+    }
+    else
+    {
+        if (bootInfo->rollbackImageIndex >= 0 && bootInfo->rollbackImageIndex < ARRAY_SIZE(bootInfo->img))
+        {
+            bootLog("INFO: Rolling back to image %d:%s after restart", bootInfo->rollbackImageIndex, bootInfo->img[bootInfo->rollbackImageIndex].imageInfo.imageName);
+            bootInfo->rollbackImageIndex = -1;
+            appImage_setLoadRequest(&bootInfo->img[bootInfo->rollbackImageIndex]);
+            bootInfo_save(BOOT_INFO_ADDR, bootInfo);
+            sys_reboot();
+            return;
+        }
+        else
+        {
+            bootLog("INFO: No image is set as backup");
+
+            for (int i = 0; i < ARRAY_SIZE(bootInfo->img); i++)
+            {
+                if (bootInfo->img[i].isValid && !appImage_isCurrent(&bootInfo->img[i].imageInfo, bootInfo))
+                {
+                    bootLog("INFO: Rolling back to image %d:%s after restart", i, bootInfo->img[i].imageInfo.imageName);
+                    bootInfo->rollbackImageIndex = -1;
+                    appImage_setLoadRequest(i);
+                    bootInfo_save(BOOT_INFO_ADDR, bootInfo);
+                    sys_reboot();
+                    return;
+                }
+            }
+
+            for (int i = 0; i < ARRAY_SIZE(bootInfo->img); i++)
+            {
+                if (bootInfo->img[i].isValid)
+                {
+                    bootLog("INFO: Rolling back to image %d:%s after restart", i, bootInfo->img[i].imageInfo.imageName);
+                    bootInfo->rollbackImageIndex = -1;
+                    appImage_setLoadRequest(i);
+                    bootInfo_save(BOOT_INFO_ADDR, bootInfo);
+                    sys_reboot();
+                    return;
+                }
+            }
+
+            bootLog("ERROR: No valid image can be rolled back to. Restarting.");
+
+            sys_reboot();
+            return;
+        }
+    }
 }
 
 int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo)
@@ -178,15 +279,22 @@ int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo)
     if (store->imageInfo.encryption.method != ENCRYPTION_EC_P256_AES_128_CBC_SHA_256)
         return; // no other encryption methods supported yet
 
-    // Find current image and set rollback image
-    for (int i = 0; i < ARRAY_SIZE(bootInfo->img); i++)
+    if (bootInfo->appStore.isValid)
     {
-        if (bootInfo->img[i].isValid && appImage_isCurrent(&bootInfo->img[i].imageInfo, bootInfo))
+        // Find current image and set rollback image
+        for (int i = 0; i < ARRAY_SIZE(bootInfo->img); i++)
         {
-            bootLog("INFO: Image %d:%s is selected for rollback", i, bootInfo->img[i].imageInfo.imageName);
-            bootInfo->rollbackImageIndex = i;
-            break;
+            if (bootInfo->img[i].isValid && appImage_isCurrent(&bootInfo->img[i].imageInfo, bootInfo))
+            {
+                bootLog("INFO: Image %d:%s is selected as backup", i, bootInfo->img[i].imageInfo.imageName);
+                bootInfo->rollbackImageIndex = i;
+                break;
+            }
         }
+    }
+    else
+    {
+        bootInfo->rollbackImageIndex = -1;
     }
 
     bootLog("INFO: Starting image transfer");

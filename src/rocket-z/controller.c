@@ -41,7 +41,6 @@ struct BootInfo *bootInfo_load(uint32_t address)
         for (int i = 0; i < ARRAY_SIZE(result->img); i++)
         {
             appImage_clearLoadRequest(&result->img[i].imageInfo);
-            result->img[i].imageInfo.strikeCountResetVal = 0x07;
             result->img[i].isValid = false;
         }
     }
@@ -72,6 +71,7 @@ void bootInfo_save(uint32_t address, const struct BootInfo *info)
     {
         if (((uint8_t *)&buffer->bootInfo[0])[i] & ~((uint8_t *)&buffer->bootInfo[1])[i])
         {
+            bootLog("INFO: Erasing boot info for rewrite");
             bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->erase(address, BOOT_FLASH_BLOCK_SIZE);
             break;
         }
@@ -87,6 +87,7 @@ void bootInfo_save(uint32_t address, const struct BootInfo *info)
     if (memcmp(&buffer->bootInfo[1], &buffer->bootInfo[0], sizeof(struct BootInfo)) != 0)
     {
         // data wasn't written correctly. erase and write again
+        bootLog("INFO: Erasing boot info for rewrite");
         bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->erase(address, sizeof(struct BootInfo));
         bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->write(address, info, sizeof(struct BootInfo));
     }
@@ -844,4 +845,63 @@ int appImage_verifyChecksum(const struct AppImageStore *store)
     }
 
     return 0;
+}
+
+uint32_t bootInfo_getFailCount(const struct BootInfo *info)
+{
+    int count = 0, countC = 0;
+
+    for (int i = 0; i < sizeof(info->failFlags) * 8; i++)
+    {
+        if ((~info->failFlags) & (1 << i))
+        {
+            count++;
+        }
+    }
+
+    for (int i = 0; i < sizeof(info->failClears) * 8; i++)
+    {
+        if ((~info->failFlags) & (1 << i))
+        {
+            countC++;
+        }
+    }
+
+    return count > countC ? count - countC : 0;
+}
+
+void bootInfo_failFlag(struct BootInfo *info)
+{
+    int currentFailCount = bootInfo_getFailCount(info);
+
+    if (currentFailCount > sizeof(info->failFlags) * 8)
+    {
+        currentFailCount = sizeof(info->failFlags) * 8;
+    }
+
+    if (0 == info->failFlags)
+    {
+        // all flags are set
+        memset(&info->failFlags, 0xFF, sizeof(info->failFlags));
+
+        for (int i = 0; i < currentFailCount; i++)
+        {
+            info->failFlags &= ~(1 << i);
+        }
+    }
+
+    // find a set bit and clear it
+    for (int i = 0; i < sizeof(info->failFlags) * 8; i++)
+    {
+        if ((~info->failFlags) & (1 << i))
+        {
+            info->failFlags &= ~(1 << i);
+            break;
+        }
+    }
+}
+
+void bootInfo_failClear(struct BootInfo *info)
+{
+    info->failClears = info->failFlags;
 }
