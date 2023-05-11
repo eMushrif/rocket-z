@@ -11,6 +11,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/flash.h>
 #include <zephyr/fatal.h>
+#include <fprotect.h>
 
 #include "rocket-z/bootloader.h"
 
@@ -18,12 +19,22 @@ static const struct device *internalFlashDeviceId;
 
 int zephyrFlashRead(size_t address, void *data, size_t size)
 {
+	if (fprotect_is_protected(address) & 2)
+	{
+		return -EPERM;
+	}
+
 	int res = flash_read(internalFlashDeviceId, address, data, size);
 	return res >= 0 ? size : res;
 }
 
 int zephyrFlashErase(size_t address, size_t size)
 {
+	if (fprotect_is_protected(address) & 1)
+	{
+		return -EPERM;
+	}
+
 	// allign the erase region with the BOOT_FLASH_BLOCK_SIZE
 	size = size % BOOT_FLASH_BLOCK_SIZE ? size + BOOT_FLASH_BLOCK_SIZE - size % BOOT_FLASH_BLOCK_SIZE : size;
 	return flash_erase(internalFlashDeviceId, address, size);
@@ -31,6 +42,11 @@ int zephyrFlashErase(size_t address, size_t size)
 
 int zephyrFlashWrite(size_t address, const void *data, size_t size)
 {
+	if (fprotect_is_protected(address) & 1)
+	{
+		return -EPERM;
+	}
+
 	// data must be aligned in 4 bytes
 	int actSize = size % BOOT_FLASH_WRITE_ALIGNMENT ? size + BOOT_FLASH_WRITE_ALIGNMENT - size % BOOT_FLASH_WRITE_ALIGNMENT : size;
 	int res = flash_write(internalFlashDeviceId, address, data, actSize);
@@ -39,7 +55,9 @@ int zephyrFlashWrite(size_t address, const void *data, size_t size)
 
 int zephyrFlashLock(size_t address, size_t size, enum FlashLockType lockType)
 {
-	// return flash_write_protection_set(internalFlashDeviceId, true);
+	// round size up to flash block size
+	size = size % BOOT_FLASH_BLOCK_SIZE ? size + BOOT_FLASH_BLOCK_SIZE - size % BOOT_FLASH_BLOCK_SIZE : size;
+	return lockType == FLASH_LOCK_WRITE ? fprotect_area(address, size) : fprotect_area_no_access(address, size);
 }
 
 struct FlashDevice flashDevice_internalFlash = {

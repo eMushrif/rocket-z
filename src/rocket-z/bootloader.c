@@ -21,7 +21,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
         bootLog("ERROR: Boot info version mismatch");
     }
 
-    // For testing
+#if 1 // For testing
     appImage_setStore(&bootInfo->img[0], BOOT_IMG_STORAGE_INTERNAL_FLASH, 0x20000, 0x20000);
     appImage_setName(&bootInfo->img[0].imageInfo, "image0");
     appImage_setEncryption(&bootInfo->img[0].imageInfo, "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElHbYKCCRqq7Tl7kJrWf+8feaydJoH/SInipkPHoMiljLbo4X8u8oEaDZqmWpXAqN6bhvJYSUL/RpLLKS2kDD5A==", ENCRYPTION_EC_P256_AES_128_CBC_SHA_256, 12032);
@@ -29,6 +29,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
     appImage_setLoadRequest(&bootInfo->img[0].imageInfo);
     appImage_setValid(&bootInfo->img[0], true);
     bootInfo_setCurrentVariant(bootInfo, "my-product-dev:master");
+#endif
 
     for (int i = 0; i < ARRAY_SIZE(bootInfo->img); i++)
     {
@@ -64,6 +65,79 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
     }
 
     // lock memory
+    int lockRes;
+    lockRes = internalFlash->lock(0x0, BOOT_KEY_ADDR, FLASH_LOCK_WRITE);
+
+    if (lockRes < 0)
+    {
+        bootLog("WARNING: Failed to lock memory");
+    }
+
+    lockRes = internalFlash->lock(BOOT_APP_ADDR, MIN(BOOT_MAX_APPIMAGE_SIZE, bootInfo->appStore.imageInfo.encryption.encryptedSize), FLASH_LOCK_WRITE);
+
+    if (lockRes < 0)
+    {
+        bootLog("WARNING: Failed to lock memory");
+    }
+
+    lockRes = internalFlash->lock(BOOT_KEY_ADDR, 512, FLASH_LOCK_ALL);
+
+    if (lockRes < 0)
+    {
+        bootLog("WARNING: Failed to lock memory");
+    }
+
+#if 0 // For testing
+    // try read from locked memory
+    uint8_t buf[0x10];
+
+    int rres = internalFlash->read(BOOT_KEY_ADDR, buf, 0x10);
+
+    if (rres < 0)
+    {
+        bootLog("ERROR: Failed to read from locked memory");
+    }
+
+    rres = internalFlash->read(0x00, buf, 0x10);
+
+    if (rres < 0)
+    {
+        bootLog("ERROR: Failed to read from locked memory");
+    }
+
+    rres = internalFlash->read(BOOT_APP_ADDR + 512, buf, 0x10);
+
+    if (rres < 0)
+    {
+        bootLog("ERROR: Failed to read from locked memory");
+    }
+
+    buf[0] = 1;
+    buf[1] = 2;
+    buf[2] = 3;
+
+    rres = internalFlash->write(BOOT_KEY_ADDR, buf, 0x10);
+
+    if (rres < 0)
+    {
+        bootLog("ERROR: Failed to read from locked memory");
+    }
+
+    rres = internalFlash->write(0x00, buf, 0x10);
+
+    if (rres < 0)
+    {
+        bootLog("ERROR: Failed to read from locked memory");
+    }
+
+    rres = internalFlash->write(BOOT_APP_ADDR + 512, buf, 0x10);
+
+    if (rres < 0)
+    {
+        bootLog("ERROR: Failed to read from locked memory");
+    }
+
+#endif
 
     // verify loaded image
     int res = appImage_verify(&bootInfo->appStore, bootInfo);
