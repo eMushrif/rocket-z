@@ -55,7 +55,7 @@ bool find_pem_base64(const char *text, size_t text_len, size_t *start, size_t *e
     return true;
 }
 
-bool findIdentifier(asn1_tree *tree, int objectCount, uint8_t *identifierData, size_t identifierDataSize);
+bool findIdentifier(const asn1_tree *tree, int objectCount, const uint8_t *identifierData, size_t identifierDataSize);
 asn1_tree *findObject(asn1_tree *tree, int objectCount, uint8_t tag, size_t minimumSize, size_t expectedSize);
 
 int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *len)
@@ -124,7 +124,7 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
     if (der_decode(der, der_len, asn1_objects, asn1_objects + 1, asn1_object_count) < 0)
     {
         // failed to decode
-        free(asn1_objects);
+        k_free(asn1_objects);
         return -1;
     }
 
@@ -132,7 +132,6 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
 
     bool identifierFound = false;
 
-    const uint8_t ecPublicKey_identifier[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01};
     const uint8_t primev251v1_identifier[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
 
     if (type == EC_P256_PRIVATE_KEY)
@@ -143,7 +142,7 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
 
         if (NULL == object)
         {
-            free(asn1_objects);
+            k_free(asn1_objects);
             return -1;
         }
 
@@ -229,7 +228,7 @@ enum ValidityLevel
     TAG_MATCH = 0x80,
 };
 
-bool findIdentifier(asn1_tree *tree, int objectCount, uint8_t *identifierData, size_t identifierDataSize)
+bool findIdentifier(const asn1_tree *tree, int objectCount, const uint8_t *identifierData, size_t identifierDataSize)
 {
     for (int i = 0; i < objectCount; i++)
     {

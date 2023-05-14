@@ -259,7 +259,7 @@ extern "C"
      * \param store Pointer to store information structure
      * \return true if image has a load request, false otherwise
      */
-    bool appImage_hasLoadRequest(struct AppImageStore *store);
+    bool appImage_hasLoadRequest(const struct AppImageStore *store);
 
     /**
      * \brief Read image header from flash
@@ -298,7 +298,7 @@ extern "C"
      * \param bootInfo Optional. Pointer to the boot information structure. if not NULL bootInfo will be saved automatically.
      * \return 0 on success, BootError on error
      */
-    int appImage_transfer(struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfo *bootInfo);
+    int appImage_transfer(const struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfo *bootInfo);
 
     /**
      * \brief Get fail count
@@ -351,7 +351,7 @@ extern "C"
      * \param bootInfo Pointer to the boot information structure
      * \return true if image is the one currently loaded, false otherwise
      */
-    bool appImage_isCurrent(struct AppImageStore *store, struct BootInfo *bootInfo);
+    bool appImage_isCurrent(const struct AppImageHeader *header, const struct BootInfo *bootInfo);
 
     /**
      * \brief Set image name
@@ -372,7 +372,7 @@ extern "C"
      * \param flash Flash device used to store the log
      * \param address Address in flash where the log is stored
      */
-    void bootLogInit(struct FlashDevice *flash, uint32_t address);
+    void bootLogInit(const struct FlashDevice *flash, uint32_t address);
 
 #ifdef __cplusplus
 }

@@ -39,7 +39,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
         {
             // read image header
 
-            int res = appImage_readHeader(&bootInfo.stores[i], &header);
+            int res = appImage_readHeader(&header, &bootInfo.stores[i]);
 
             if (res < 0)
             {
@@ -48,7 +48,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
                 continue;
             }
 
-            bootLog("INFO: Image %d:%s has load request", i, header.imageName);
+            bootLog("INFO: Image %d:%.64s has load request", i, header.imageName);
 
             // clear load request
             appImage_clearLoadRequest(&bootInfo.stores[i]);
@@ -61,7 +61,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
 
             if (verified < 0)
             {
-                bootLog("ERROR: Image %d:%s failed verification. Will not be loaded", i, header.imageName);
+                bootLog("ERROR: Image %d:%.64s failed verification. Will not be loaded", i, header.imageName);
                 appImage_setValid(&bootInfo.stores[i], false);
                 continue;
             }
@@ -71,18 +71,18 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
 
             if (verified < 0)
             {
-                bootLog("ERROR: Image %d:%s failed checksum verification. Will not be loaded", i, header.imageName);
+                bootLog("ERROR: Image %d:%.64s failed checksum verification. Will not be loaded", i, header.imageName);
                 appImage_setValid(&bootInfo.stores[i], false);
                 continue;
             }
 
-            bootLog("INFO: Loading image %s", header.imageName);
+            bootLog("INFO: Loading image %.64s", header.imageName);
 
             res = loadImage(&bootInfo.stores[i], &bootInfo);
 
             if (res < 0)
             {
-                bootLog("ERROR: Failed to load image %d:%s", i, header.imageName);
+                bootLog("ERROR: Failed to load image %d:%.64s", i, header.imageName);
                 continue;
             }
 
@@ -95,7 +95,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
 
     bootInfo_save(BOOT_INFO_ADDR, &bootInfo);
 
-    int res = appImage_readHeader(&bootInfo.appStore, &header);
+    int res = appImage_readHeader(&header, &bootInfo.appStore);
 
     if (res < 0)
     {
@@ -252,11 +252,11 @@ void rollback(struct BootInfo *bootInfo)
 
         if (bootInfo->rollbackImageIndex >= 0 && bootInfo->rollbackImageIndex < ARRAY_SIZE(bootInfo->stores))
         {
-            int res = appImage_readHeader(&bootInfo->stores[bootInfo->rollbackImageIndex], &header);
+            int res = appImage_readHeader(&header, &bootInfo->stores[bootInfo->rollbackImageIndex]);
             if (res < 0)
                 bootLog("WARNING: Failed to read image header of rollback image. Will try it anyway.");
 
-            bootLog("INFO: Rolling back to image %d:%s after restart", bootInfo->rollbackImageIndex, header.imageName);
+            bootLog("INFO: Rolling back to image %d:%.64s after restart", bootInfo->rollbackImageIndex, header.imageName);
             bootInfo->rollbackImageIndex = -1;
             appImage_setLoadRequest(&bootInfo->stores[bootInfo->rollbackImageIndex]);
             bootInfo_save(BOOT_INFO_ADDR, bootInfo);
@@ -269,16 +269,16 @@ void rollback(struct BootInfo *bootInfo)
 
             for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
             {
-                int res = appImage_readHeader(&bootInfo->stores[bootInfo->rollbackImageIndex], &header);
+                int res = appImage_readHeader(&header, &bootInfo->stores[i]);
                 if (res < 0)
                     continue;
 
                 if (bootInfo->stores[i].isValid && !appImage_isCurrent(&header, bootInfo))
                 {
 
-                    bootLog("INFO: Rolling back to image %d:%s after restart", i, header.imageName);
+                    bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                     bootInfo->rollbackImageIndex = -1;
-                    appImage_setLoadRequest(i);
+                    appImage_setLoadRequest(&bootInfo->stores[i]);
                     bootInfo_save(BOOT_INFO_ADDR, bootInfo);
                     sys_reboot();
                     return;
@@ -287,15 +287,15 @@ void rollback(struct BootInfo *bootInfo)
 
             for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
             {
-                int res = appImage_readHeader(&bootInfo->stores[bootInfo->rollbackImageIndex], &header);
+                int res = appImage_readHeader(&header, &bootInfo->stores[i]);
                 if (res < 0)
                     continue;
 
                 if (bootInfo->stores[i].isValid)
                 {
-                    bootLog("INFO: Rolling back to image %d:%s after restart", i, header.imageName);
+                    bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                     bootInfo->rollbackImageIndex = -1;
-                    appImage_setLoadRequest(i);
+                    appImage_setLoadRequest(&bootInfo->stores[i]);
                     bootInfo_save(BOOT_INFO_ADDR, bootInfo);
                     sys_reboot();
                     return;
@@ -319,7 +319,7 @@ int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo)
         {
             // read header
             struct AppImageHeader header;
-            int res = appImage_readHeader(&bootInfo->stores[i], &header);
+            int res = appImage_readHeader(&header, &bootInfo->stores[i]);
             if (res < 0)
             {
                 continue;
@@ -327,7 +327,7 @@ int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo)
 
             if (bootInfo->stores[i].isValid && appImage_isCurrent(&header, bootInfo))
             {
-                bootLog("INFO: Image %d:%s is selected as backup", i, header.imageName);
+                bootLog("INFO: Image %d:%.64s is selected as backup", i, header.imageName);
                 bootInfo->rollbackImageIndex = i;
                 break;
             }
