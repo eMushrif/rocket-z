@@ -52,7 +52,7 @@ extern "C"
     enum BootError
     {
         BOOT_ERROR_SUCCESS = 0,
-        BOOT_ERROR_appImage_NOT_VALID = -1,
+        BOOT_ERROR_APP_IMAGE_NOT_VALID = -1,
         BOOT_ERROR_SIGNATURE_MESSAGE_INVALID = -2,
         BOOT_ERROR_SIGNER_HAS_LIMITED_PERMISSIONS = -3,
         BOOT_ERROR_UNKNOWN_SIGNER = -4,
@@ -60,6 +60,8 @@ extern "C"
         BOOT_ERROR_INVALID_SIZE = -6,
         BOOT_ERROR_FAILED_PARSE = -7,
         BOOT_ERROR_FAILED_CHECKSUM = -8,
+        BOOT_ERROR_INVALID_HEADER_VERSION = -9,
+        BOOT_ERROR_UNSUPPORTED_ENCRYPTION_METHOD = -10,
     };
 
     enum FlashLockType
@@ -77,16 +79,14 @@ extern "C"
         int (*lock)(size_t address, size_t size, enum FlashLockType lockType); //< Optional. If not provided, will be used for internal flash only.
     };
 
-    enum EncryptionMethod
+    enum AppImageHeaderVersion
     {
-        ENCRYPTION_EC_P256_AES_128_CBC_SHA_256 = 1,
+        IMAGE_HEADER_VERSION_0_0 = 0xAB71BE9F,
     };
 
-    enum AppImageStatus
+    enum AppImageEncryptionMethod
     {
-        BOOT_IMG_REQUESTED = 1 << 0,    //< request loading this image. setting this flag resets all other flags and BOOT_IMG_INVALID
-        BOOT_IMG_LOAD_ATTEMPT = 1 << 2, //< an attempt to load this image was made
-        BOOT_IMG_INVALID = 1 << 8,      //< image was invalidated and will not be loaded. Changing other image flags will not set this flag.
+        ENCRYPTION_EC_P256_AES_128_CBC_SHA_256 = 1,
     };
 
     enum AppImageStorage
@@ -95,28 +95,30 @@ extern "C"
         BOOT_IMG_STORAGE_INTERNAL_FLASH,
     };
 
+#pragma pack(4)
     /**
      * \brief Image information
      */
-    struct AppImageInfo
+    struct AppImageHeader
     {
-        char imageName[64]; //< Firendly image name. preferablly unique.
+        uint32_t headerVersion; //< AppImageHeaderVersion
 
-        int32_t loadRequests; //< Inverted bit field of load requests
-        int32_t loadAttempts; //< Inverted bit field of load attempts
+        uint32_t headerSize;
+
+        char imageName[64]; //< Firendly image name. preferablly unique.
 
         // Image encryption info
         struct
         {
             int32_t method;
-            uint8_t pubKey[64]; //< Public key used for encryption. Base 64 encoded.
             uint32_t encryptedSize;
+            uint8_t pubKey[64]; //< Public key used for encryption. Base 64 encoded.
         } encryption;
 
         // signature info
         struct
         {
-
+            uint8_t signature[64];
             /**
              * \brief Digest message as a JSON string. See SignatureMessage struct for details.
              * example:
@@ -131,7 +133,6 @@ extern "C"
                 }
             */
             char message[BOOT_SIGNATURE_MESSAGE_MAX_SIZE];
-            uint8_t signature[64];
         } signatureInfo;
     };
 
@@ -157,7 +158,8 @@ extern "C"
         size_t maxSize;               //< Maximum size for storage of the image
         bool isValid;                 //< Is the image stored valid
 
-        struct AppImageInfo imageInfo; //< Image information
+        int32_t loadRequests; //< Inverted bit field of load requests
+        int32_t loadAttempts; //< Inverted bit field of load attempts
     };
 
     enum BootInfoVersion
@@ -185,7 +187,7 @@ extern "C"
         uint32_t failFlags; //< Inverted bit field of fail marks
         uint32_t failClears;
 
-        struct AppImageStore img[3];
+        struct AppImageStore stores[4];
     };
 
     /**
@@ -205,9 +207,10 @@ extern "C"
     /**
      * \brief Load boot information from flash
      * \param address Address in flash where the boot information is stored
+     * \param info Pointer to the boot information structure output
      * \return Pointer to the boot information structure. Null if the boot information is invalid.
      */
-    struct BootInfo *bootInfo_load(uint32_t address);
+    struct BootInfo *bootInfo_load(uint32_t address, struct BootInfo *info);
 
     /**
      * \brief Save boot information to flash if it has changed
@@ -217,44 +220,13 @@ extern "C"
     void bootInfo_save(uint32_t address, const struct BootInfo *info);
 
     /**
-     * \brief Free boot information structure
-     * \param info Pointer to the boot information structure
-     */
-    void bootInfo_free(struct BootInfo *info);
-
-    /**
-     * \brief Set image name
-     * \param info Pointer to the image information structure
-     * \param name Image name
-     */
-    void appImage_setName(struct AppImageInfo *info, const char *name);
-
-    /**
      * \brief Set image address in images store flash
      * \param info Pointer to the image information structure
      * \param type Where the image is stored
-     * \param offset Address in flash where the image is stored
+     * \param offset Address in flash where the image is stored. must point to image header.
      * \param maxSize Maximum size for storage location
      */
     void appImage_setStore(struct AppImageStore *info, enum AppImageStorage storage, size_t offset, size_t maxSize);
-
-    /**
-     * \brief Set encryption information for an image
-     * \param info Pointer to the image information structure
-     * \param pubKey Public key used for encryption. PEM-formatted. With or without header and footer.
-     * \param encryptedSize Size of the encrypted image
-     * \param method Encryption method
-     */
-    enum BootError appImage_setEncryption(struct AppImageInfo *info, const char *pubKey, enum EncryptionMethod method, size_t encryptedSize);
-
-    /**
-     * Set signature information for an image
-     * \param info Pointer to the image information structure
-     * \param message Digest message as a JSON string
-     * \param signature Signature of the message. PEM-formatted. With or without header and footer.
-     * \return 0 on success, BootError on error
-     */
-    enum BootError appImage_setSignature(struct AppImageInfo *info, const char *message, const char *signature);
 
     /**
      * \brief Set image valid status
@@ -262,15 +234,6 @@ extern "C"
      * \param valid Valid status
      */
     void appImage_setValid(struct AppImageStore *info, bool valid);
-
-    /**
-     * \brief Set image address and size
-     * \param info Pointer to the image store struct
-     * \param type Image storage type
-     * \param offset Offset in flash where the image is stored
-     * \param size Size of the image
-     */
-    void appImage_setStore(struct AppImageStore *info, enum AppImageStorage type, size_t offset, size_t size);
 
     /**
      * \brief Set currently-running image variant name
@@ -281,37 +244,37 @@ extern "C"
 
     /**
      * \brief Mark image to be loaded
-     * \param info Pointer to the image information structure
+     * \param store Pointer to store information structure
      */
-    void appImage_setLoadRequest(struct AppImageInfo *info);
+    void appImage_setLoadRequest(struct AppImageStore *store);
 
     /**
      * \brief Clear image load request
-     * \param info Pointer to the image information structure
+     * \param store Pointer to store information structure
      */
-    void appImage_clearLoadRequest(struct AppImageInfo *info);
+    void appImage_clearLoadRequest(struct AppImageStore *store);
 
     /**
      * \brief Check if image has a load request
-     * \param info Pointer to the image information structure
+     * \param store Pointer to store information structure
      * \return true if image has a load request, false otherwise
      */
-    bool appImage_hasLoadRequest(struct AppImageInfo *info);
+    bool appImage_hasLoadRequest(struct AppImageStore *store);
 
     /**
-     * \brief Check if image is the one currently loaded
-     * \param info Pointer to the image information structure
-     * \param bootInfo Pointer to the boot information structure
-     * \return true if image is the one currently loaded, false otherwise
+     * \brief Read image header from flash
+     * \param header Pointer to the image header structure
+     * \param store Pointer to the image information structure
+     * \return 0 on success, BootError on error
      */
-    bool appImage_isCurrent(struct AppImageInfo *info, struct BootInfo *bootInfo);
+    int appImage_readHeader(struct AppImageHeader *header, const struct AppImageStore *store);
 
     /**
      * \brief Check if image signature is valid
-     * \param imageInfo Pointer to the image information structure
+     * \param header Pointer to the image header structure
      * \return 0 if verified, BootError otherwise
      */
-    int appImage_verifySignature(const struct AppImageInfo *imageInfo);
+    int appImage_verifySignature(const struct AppImageHeader *header);
 
     /**
      * \brief Performs multiple checks to verify that the image is loadable. Includes signature verification.
@@ -322,13 +285,11 @@ extern "C"
     int appImage_verify(const struct AppImageStore *imageStore, const struct BootInfo *bootInfo);
 
     /**
-     * \brief Get the signature message data for an image
-     * \param imageInfo Pointer to the image information structure
-     * \param messageOut Pointer to the output of signature message data.
-     * \param messageBuff A buffer where message strings are stored. Must be at least of size BOOT_SIGNATURE_MESSAGE_MAX_SIZE
-     * \return 0 if verified, BootError otherwise
+     * \brief Perfrom checksum on image
+     * \param store Pointer to the image store
+     * \return 0 if checksum matches signature, BootError on error
      */
-    int appImage_getSignatureMessage(const struct AppImageInfo *imageInfo, struct SignatureMessage *messageOut, char *messageBuff);
+    int appImage_verifyChecksum(const struct AppImageStore *store);
 
     /**
      * \brief Transfer an image from one store to another. If the destination is the app area image will be decrypted, if the source is the app area image will be encrypted.
@@ -338,13 +299,6 @@ extern "C"
      * \return 0 on success, BootError on error
      */
     int appImage_transfer(struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfo *bootInfo);
-
-    /**
-     * \brief Perfrom checksum on image
-     * \param store Pointer to the image store
-     * \return 0 if checksum matches signature, BootError on error
-     */
-    int appImage_verifyChecksum(const struct AppImageStore *store);
 
     /**
      * \brief Get fail count
@@ -363,6 +317,48 @@ extern "C"
      * \param info Pointer to the boot information structure
      */
     void bootInfo_failClear(struct BootInfo *info);
+
+    /**
+     * \brief Set encryption information for an image
+     * \param header Pointer to the image header structure
+     * \param pubKey Public key used for encryption. PEM-formatted. With or without header and footer.
+     * \param encryptedSize Size of the encrypted image
+     * \param method Encryption method
+     */
+    enum BootError appImage_setEncryption(struct AppImageHeader *header, const char *pubKey, enum AppImageEncryptionMethod method, size_t encryptedSize);
+
+    /**
+     * Set signature information for an image
+     * \param header Pointer to the image header structure
+     * \param message Digest message as a JSON string
+     * \param signature Signature of the message. PEM-formatted. With or without header and footer.
+     * \return 0 on success, BootError on error
+     */
+    enum BootError appImage_setSignature(struct AppImageHeader *header, const char *message, const char *signature);
+
+    /**
+     * \brief Get the signature message data for an image
+     * \param header Pointer to the image header structure
+     * \param messageOut Pointer to the output of signature message data.
+     * \param messageBuff A buffer where message strings are stored. Must be at least of size BOOT_SIGNATURE_MESSAGE_MAX_SIZE
+     * \return 0 if verified, BootError otherwise
+     */
+    int appImage_getSignatureMessage(const struct AppImageHeader *header, struct SignatureMessage *messageOut, char *messageBuff);
+
+    /**
+     * \brief Check if image is the one currently loaded
+     * \param header Pointer to the image header structure
+     * \param bootInfo Pointer to the boot information structure
+     * \return true if image is the one currently loaded, false otherwise
+     */
+    bool appImage_isCurrent(struct AppImageStore *store, struct BootInfo *bootInfo);
+
+    /**
+     * \brief Set image name
+     * \param header Pointer to the image header structure
+     * \param name Image name
+     */
+    void appImage_setName(struct AppImageHeader *header, const char *name);
 
     /**
      * \brief Log event

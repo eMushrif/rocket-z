@@ -16,6 +16,7 @@ $ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/ecc.c
 $ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/aes_decrypt.c
 $ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/aes_encrypt.c
 $ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/cbc_mode.c
+$ENV{NCS_PATH_2_3}/nrf/lib/fprotect/fprotect_acl.c
 src/rocket-z/pem/tiny-asn1.c
 src/rocket-z/pem/pem-decode.c
 )
