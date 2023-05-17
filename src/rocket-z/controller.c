@@ -141,9 +141,43 @@ enum BootError appImage_readHeader(struct AppImageHeader *header, const struct A
         return res;
     }
 
-    if (header->headerVersion != IMAGE_HEADER_VERSION_0_0)
+    bool isStringsOk = false;
+
+    // make sure strings don't cause issues because of missing null terminator
+    for (int i = sizeof(header->imageName) - 1; i >= 0; i--)
     {
-        bootLog("ERROR: Image header is invalid or version (%d) is not supported", header->headerVersion);
+        if (header->imageName[i] == 0)
+        {
+            isStringsOk = true;
+            break;
+        }
+    }
+
+    if (!isStringsOk)
+    {
+        bootLog("ERROR: Image header is invalid or version (%d) is not supported; imageName is longer that it should be", header->headerVersion);
+        return BOOT_ERROR_INVALID_HEADER_VERSION;
+    }
+
+    for (int i = sizeof(header->signatureInfo.message) - 1; i >= 0; i--)
+    {
+        if (header->signatureInfo.message[i] == 0)
+        {
+            isStringsOk = true;
+            break;
+        }
+    }
+
+    if (!isStringsOk)
+    {
+        bootLog("ERROR: Image header is invalid or version (%d) is not supported; signature message is longer that it should be", header->headerVersion);
+        return BOOT_ERROR_INVALID_HEADER_VERSION;
+    }
+
+    // check major version
+    if ((uint16_t)header->headerVersion != (uint16_t)IMAGE_HEADER_VERSION_0_0)
+    {
+        bootLog("WARNING: Image header version (%d) might not be supported", header->headerVersion);
         return BOOT_ERROR_INVALID_HEADER_VERSION;
     }
 

@@ -120,6 +120,8 @@ void main(void)
 {
 	internalFlashDeviceId = device_get_binding(DT_NODE_FULL_NAME(DT_CHOSEN(zephyr_flash_controller)));
 	bootloader_run(&flashDevice_internalFlash, &flashDevice_internalFlash);
+
+	// should not reach here
 	while (true)
 		;
 }
