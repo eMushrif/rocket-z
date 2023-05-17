@@ -11,45 +11,88 @@
 #include <tinycrypt/cbc_mode.h>
 #include "pem/pem-decode.h"
 
-struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *info)
+int unknownFlashRead(size_t address, void *data, size_t size)
 {
-    struct BootInfo *result = info;
+    bootLog("ERROR: Unknown flash device identifier");
+    return -1;
+}
 
-    if (NULL == result)
+int unknownFlashErase(size_t address, size_t size)
+{
+    bootLog("ERROR: Unknown flash device identifier");
+    return -1;
+}
+
+int unknownFlashWrite(size_t address, const void *data, size_t size)
+{
+    bootLog("ERROR: Unknown flash device identifier");
+    return -1;
+}
+
+int unknownFlashLock(size_t address, size_t size, enum FlashLockType lockType)
+{
+    bootLog("ERROR: Unknown flash device identifier");
+    return -1;
+}
+
+struct FlashDevice flashDevice_unknown = {
+    .read = unknownFlashRead,
+    .erase = unknownFlashErase,
+    .write = unknownFlashWrite,
+    .lock = unknownFlashLock,
+};
+
+struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff)
+{
+    struct BootInfo *info = &buff->bootInfo;
+
+    if (NULL == info)
         return NULL;
 
-    bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->read(address, result, sizeof(struct BootInfo));
+    int res = bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->read(address, info, sizeof(struct BootInfo));
 
-    if (result->version != BOOT_VERSION_0_0)
+    if (res < 0)
+    {
+        bootLog("ERROR: Failed to read boot info from flash");
+        return NULL;
+    }
+
+    if (info->version != BOOT_VERSION_0_0)
     {
         // Boot information not loaded, or different version. Reset info.
-        memset(result, 0, sizeof(struct BootInfo));
+        memset(info, 0, sizeof(struct BootInfo));
 
         // set bootloader name
-        strcpy(result->bootloaderName, "rocket-zn");
+        strcpy(info->bootloaderName, "rocket-zn");
 
         // set boot version
-        result->version = BOOT_VERSION_0_0;
+        info->version = BOOT_VERSION_0_0;
     }
 
     // make sure appStore parameters are not changed
-    appImage_setStore(&result->appStore, BOOT_IMG_STORAGE_INTERNAL_FLASH, ROCKETZ_APP_ADDR, ROCKETZ_MAX_APPIMAGE_SIZE);
+    appImage_setStore(&info->appStore, BOOT_IMG_STORAGE_INTERNAL_FLASH, ROCKETZ_APP_ADDR, ROCKETZ_MAX_APPIMAGE_SIZE);
 
     // copy the original boot info to the second half of the buffer
-    memcpy(&info->bootInfo_orig, &info->bootInfo, sizeof(struct BootInfo));
+    memcpy(&buff->bootInfo_orig, &buff->bootInfo, sizeof(struct BootInfo));
 
-    bootInfo_save(address, result);
+    res = bootInfo_save(address, buff);
 
-    return result;
+    if (res < 0)
+    {
+        bootLog("ERROR: Failed to update boot into from flash");
+        return NULL;
+    }
+
+    return info;
 }
 
-void bootInfo_save(uint32_t address, const struct BootInfoBuffer *info)
+enum BootError bootInfo_save(uint32_t address, const struct BootInfoBuffer *info)
 {
     const struct BootInfoBuffer *buffer = (const struct BootInfoBuffer *)info;
 
     // if info is the same as the one in flash, don't write it
     if (memcmp(&buffer->bootInfo, &buffer->bootInfo_orig, sizeof(struct BootInfo)) == 0)
-        return;
+        return BOOT_ERROR_SUCCESS;
 
     // if any bits were changed from 0 to 1, erase the flash page
     for (int i = 0; i < sizeof(struct BootInfo); i++)
@@ -68,7 +111,7 @@ void bootInfo_save(uint32_t address, const struct BootInfoBuffer *info)
     // copy the updated boot info to the second half of the buffer
     memcpy((struct BootInfo *)(&buffer->bootInfo_orig), &buffer->bootInfo, sizeof(struct BootInfo));
 
-    bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->read(address, (&buffer->bootInfo), sizeof(struct BootInfo));
+    bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->read(address, (struct BootInfo *)(&buffer->bootInfo), sizeof(struct BootInfo));
     if (memcmp(&buffer->bootInfo_orig, &buffer->bootInfo, sizeof(struct BootInfo)) != 0)
     {
         // data wasn't written correctly. erase and write again
@@ -76,9 +119,17 @@ void bootInfo_save(uint32_t address, const struct BootInfoBuffer *info)
         bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->erase(address, sizeof(struct BootInfo));
         bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->write(address, info, sizeof(struct BootInfo));
     }
+
+    bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->read(address, (struct BootInfo *)(&buffer->bootInfo), sizeof(struct BootInfo));
+    if (memcmp(&buffer->bootInfo_orig, &buffer->bootInfo, sizeof(struct BootInfo)) != 0)
+    {
+        return BOOT_ERROR_UNKNOWN;
+    }
+
+    return BOOT_ERROR_SUCCESS;
 }
 
-int appImage_readHeader(struct AppImageHeader *header, const struct AppImageStore *store)
+enum BootError appImage_readHeader(struct AppImageHeader *header, const struct AppImageStore *store)
 {
     struct FlashDevice *device = bootInfo_getFlashDevice(store->storage);
 
@@ -99,19 +150,25 @@ int appImage_readHeader(struct AppImageHeader *header, const struct AppImageStor
     return 0;
 }
 
-void appImage_setName(struct AppImageHeader *header, const char *name)
+enum BootError appImage_setName(struct AppImageHeader *header, const char *name)
 {
     header->headerVersion = IMAGE_HEADER_VERSION_0_0;
     header->headerSize = sizeof(struct AppImageHeader);
 
     if (strlen(name) <= sizeof(header->imageName) - 1)
         strcpy(header->imageName, name);
+    else
+        return BOOT_ERROR_INPUT_STRING_TOO_LONG;
+
+    return BOOT_ERROR_SUCCESS;
 }
 
-void appImage_setStorage(struct AppImageStore *info, size_t address, enum AppImageStorage storage, size_t maxSize)
+enum BootError appImage_setStorage(struct AppImageStore *info, size_t address, enum AppImageStorage storage, size_t maxSize)
 {
     info->startAddr = address;
     info->storage = storage;
+
+    return BOOT_ERROR_SUCCESS;
 }
 
 enum BootError appImage_setSignature(struct AppImageHeader *header, const char *message, const char *signature)
@@ -121,6 +178,8 @@ enum BootError appImage_setSignature(struct AppImageHeader *header, const char *
 
     if (strlen(message) <= sizeof(header->signatureInfo.message) - 1)
         strcpy(header->signatureInfo.message, message);
+    else
+        return BOOT_ERROR_INPUT_STRING_TOO_LONG;
 
     int len = 0;
     int res = pemExtract(signature, EC_P256_SIGNATURE, header->signatureInfo.signature, &len);
@@ -161,7 +220,7 @@ enum BootError appImage_setEncryption(struct AppImageHeader *header, const char 
     header->encryption.method = method;
     header->encryption.encryptedSize = encryptedSize;
 
-    return 0;
+    return BOOT_ERROR_SUCCESS;
 }
 
 void appImage_setValid(struct AppImageStore *info, bool valid)
@@ -174,10 +233,14 @@ bool appImage_isValid(struct AppImageStore *info)
     return info->isValid == BOOT_IMG_STORE_VALID;
 }
 
-void bootInfo_setCurrentVariant(struct BootInfo *info, const char *variant)
+enum BootError bootInfo_setCurrentVariant(struct BootInfo *info, const char *variant)
 {
     if (strlen(variant) <= sizeof(info->currentVariant) - 1)
         strcpy(info->currentVariant, variant);
+    else
+        return BOOT_ERROR_INPUT_STRING_TOO_LONG;
+
+    return BOOT_ERROR_SUCCESS;
 }
 
 void appImage_setLoadRequest(struct AppImageStore *store)
@@ -195,6 +258,8 @@ void appImage_setLoadRequest(struct AppImageStore *store)
             return;
         }
     }
+
+    return;
 }
 
 void appImage_clearLoadRequest(struct AppImageStore *store)
@@ -215,8 +280,7 @@ bool appImage_isCurrent(const struct AppImageHeader *header, const struct BootIn
 
     if (res < 0)
     {
-        bootLog("ERROR: Failed to read app image header. Error %d.", res);
-        return res;
+        return false;
     }
 
     return 0 == memcmp(&appHeader.signatureInfo, &header->signatureInfo, sizeof(appHeader.signatureInfo));
@@ -289,7 +353,7 @@ struct json_obj_descr descr[DESCR_ARRAY_SIZE] = {
     JSON_OBJ_DESCR_PRIM(struct SignatureMessage, sha256, JSON_TOK_STRING),
 };
 
-int appImage_getSignatureMessage(const struct AppImageHeader *header, struct SignatureMessage *messageOut, char *messageBuff)
+enum BootError appImage_getSignatureMessage(const struct AppImageHeader *header, struct SignatureMessage *messageOut, char *messageBuff)
 {
     strcpy(messageBuff, header->signatureInfo.message);
 
@@ -314,10 +378,10 @@ int appImage_getSignatureMessage(const struct AppImageHeader *header, struct Sig
         return BOOT_ERROR_SIGNATURE_MESSAGE_INVALID;
     }
 
-    return 0;
+    return BOOT_ERROR_SUCCESS;
 }
 
-int appImage_verifySignature(const struct AppImageHeader *imageInfo)
+enum BootError appImage_verifySignature(const struct AppImageHeader *imageInfo)
 {
     struct SignatureMessage messageOut;
     char messageBuff[ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE];
@@ -379,7 +443,7 @@ int appImage_verifySignature(const struct AppImageHeader *imageInfo)
     return BOOT_ERROR_SUCCESS;
 }
 
-int appImage_verify(const struct AppImageStore *store, const struct BootInfo *bootInfo)
+enum BootError appImage_verify(const struct AppImageStore *store, const struct BootInfo *bootInfo)
 {
     if (!store->isValid)
     {
@@ -482,7 +546,7 @@ static int logStartIndex = 0;
 static int logIndex;
 static const struct FlashDevice *logFlash;
 
-void bootLogInit(const struct FlashDevice *flash, uint32_t address)
+enum BootError bootLogInit(const struct FlashDevice *flash, uint32_t address)
 {
     logFlash = flash;
     logIndex = address;
@@ -490,7 +554,13 @@ void bootLogInit(const struct FlashDevice *flash, uint32_t address)
 
     char buffer[ROCKETZ_FLASH_BLOCK_SIZE];
 
-    logFlash->read(logIndex, buffer, ROCKETZ_FLASH_BLOCK_SIZE);
+    int res = logFlash->read(logIndex, buffer, ROCKETZ_FLASH_BLOCK_SIZE);
+
+    if (res < 0)
+    {
+        logStartIndex = 0;
+        return res;
+    }
 
     for (int i = 0; i < ROCKETZ_FLASH_BLOCK_SIZE; i++)
     {
@@ -500,6 +570,8 @@ void bootLogInit(const struct FlashDevice *flash, uint32_t address)
             break;
         }
     }
+
+    return BOOT_ERROR_SUCCESS;
 }
 
 void bootLog(const char *format, ...)
@@ -555,7 +627,7 @@ struct Secret
     struct tc_aes_key_sched_struct sched;
 };
 
-int appImage_transfer(const struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfo *bootInfo)
+enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfoBuffer *bootInfoBuff)
 {
     // read image header
     struct AppImageHeader header;
@@ -595,8 +667,8 @@ int appImage_transfer(const struct AppImageStore *fromStore, struct AppImageStor
     // update imageInfo
     // memcpy(&toStore->imageInfo, &fromStore->imageInfo, sizeof(struct AppImageHeader));
 
-    if (NULL != bootInfo)
-        bootInfo_save(ROCKETZ_INFO_ADDR, bootInfo);
+    if (NULL != bootInfoBuff)
+        bootInfo_save(ROCKETZ_INFO_ADDR, bootInfoBuff);
 
     res = appImage_transfer_(fromStore, toStore, (toAppStore || fromAppStore) ? &secret : NULL);
 
@@ -858,7 +930,7 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
     return 0;
 }
 
-int appImage_verifyChecksum(const struct AppImageStore *store)
+enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
 {
     bool isLoadedApp = store->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && store->startAddr == ROCKETZ_APP_ADDR;
 

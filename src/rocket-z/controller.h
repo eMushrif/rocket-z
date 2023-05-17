@@ -57,7 +57,7 @@ extern "C"
     enum BootError
     {
         BOOT_ERROR_SUCCESS = 0,
-        BOOT_ERROR_APP_IMAGE_NOT_VALID = -1,
+        BOOT_ERROR_UNKNOWN = -1,
         BOOT_ERROR_SIGNATURE_MESSAGE_INVALID = -2,
         BOOT_ERROR_SIGNER_HAS_LIMITED_PERMISSIONS = -3,
         BOOT_ERROR_UNKNOWN_SIGNER = -4,
@@ -67,6 +67,8 @@ extern "C"
         BOOT_ERROR_FAILED_CHECKSUM = -8,
         BOOT_ERROR_INVALID_HEADER_VERSION = -9,
         BOOT_ERROR_UNSUPPORTED_ENCRYPTION_METHOD = -10,
+        BOOT_ERROR_INPUT_STRING_TOO_LONG = -11,
+        BOOT_ERROR_APP_IMAGE_NOT_VALID = -12,
     };
 
     enum FlashLockType
@@ -83,6 +85,8 @@ extern "C"
         int (*write)(size_t address, const void *data, size_t size);
         int (*lock)(size_t address, size_t size, enum FlashLockType lockType); //< Optional. If not provided, will be used for internal flash only.
     };
+
+    extern struct FlashDevice flashDevice_unknown;
 
     enum AppImageHeaderVersion
     {
@@ -234,8 +238,25 @@ extern "C"
      * \brief Save boot information to flash if it has changed
      * \param address Address in flash where the boot information is stored
      * \param info Pointer to the boot information structure buffer
+     * \return 0 on success, BootError on error
      */
-    void bootInfo_save(uint32_t address, const struct BootInfoBuffer *info);
+    enum BootError bootInfo_save(uint32_t address, const struct BootInfoBuffer *info);
+
+    /**
+     * \brief Check if image is the one currently loaded
+     * \param header Pointer to the image header structure
+     * \param bootInfo Pointer to the boot information structure
+     * \return true if image is the one currently loaded, false otherwise
+     */
+    bool appImage_isCurrent(const struct AppImageHeader *header, const struct BootInfo *bootInfo);
+
+    /**
+     * \brief Set image name
+     * \param header Pointer to the image header structure
+     * \param name Image name
+     * \return 0 on success, BootError on error
+     */
+    enum BootError appImage_setName(struct AppImageHeader *header, const char *name);
 
     /**
      * \brief Set image address in images store flash
@@ -256,6 +277,7 @@ extern "C"
     /**
      * \brief Check if image is valid
      * \param info Pointer to the image store struct
+     * \return true if image is valid, false otherwise
      */
     bool appImage_isValid(struct AppImageStore *info);
 
@@ -263,8 +285,9 @@ extern "C"
      * \brief Set currently-running image variant name
      * \param info Pointer to the image information structure
      * \param variant Image variant information.
+     * \return 0 on success, BootError on error
      */
-    void bootInfo_setCurrentVariant(struct BootInfo *store, const char *variant);
+    enum BootError bootInfo_setCurrentVariant(struct BootInfo *store, const char *variant);
 
     /**
      * \brief Mark image to be loaded
@@ -291,14 +314,14 @@ extern "C"
      * \param store Pointer to the image information structure
      * \return 0 on success, BootError on error
      */
-    int appImage_readHeader(struct AppImageHeader *header, const struct AppImageStore *store);
+    enum BootError appImage_readHeader(struct AppImageHeader *header, const struct AppImageStore *store);
 
     /**
      * \brief Check if image signature is valid
      * \param header Pointer to the image header structure
      * \return 0 if verified, BootError otherwise
      */
-    int appImage_verifySignature(const struct AppImageHeader *header);
+    enum BootError appImage_verifySignature(const struct AppImageHeader *header);
 
     /**
      * \brief Performs multiple checks to verify that the image is loadable. Includes signature verification.
@@ -306,23 +329,23 @@ extern "C"
      * \param bootInfo Pointer to the boot information structure
      * \return 0 if verified, BootError otherwise
      */
-    int appImage_verify(const struct AppImageStore *imageStore, const struct BootInfo *bootInfo);
+    enum BootError appImage_verify(const struct AppImageStore *imageStore, const struct BootInfo *bootInfo);
 
     /**
      * \brief Perfrom checksum on image
      * \param store Pointer to the image store
      * \return 0 if checksum matches signature, BootError on error
      */
-    int appImage_verifyChecksum(const struct AppImageStore *store);
+    enum BootError appImage_verifyChecksum(const struct AppImageStore *store);
 
     /**
      * \brief Transfer an image from one store to another. If the destination is the app area image will be decrypted, if the source is the app area image will be encrypted.
      * \param fromStore Pointer to the source image store
      * \param toStore Pointer to the destination image store
-     * \param bootInfo Optional. Pointer to the boot information structure. if not NULL bootInfo will be saved automatically.
+     * \param bootInfoBuff Optional. Pointer to the boot information structure. if not NULL bootInfo will be saved automatically.
      * \return 0 on success, BootError on error
      */
-    int appImage_transfer(const struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfo *bootInfo);
+    enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfoBuffer *bootInfoBuff);
 
     /**
      * \brief Get fail count
@@ -367,22 +390,7 @@ extern "C"
      * \param messageBuff A buffer where message strings are stored. Must be at least of size ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE
      * \return 0 if verified, BootError otherwise
      */
-    int appImage_getSignatureMessage(const struct AppImageHeader *header, struct SignatureMessage *messageOut, char *messageBuff);
-
-    /**
-     * \brief Check if image is the one currently loaded
-     * \param header Pointer to the image header structure
-     * \param bootInfo Pointer to the boot information structure
-     * \return true if image is the one currently loaded, false otherwise
-     */
-    bool appImage_isCurrent(const struct AppImageHeader *header, const struct BootInfo *bootInfo);
-
-    /**
-     * \brief Set image name
-     * \param header Pointer to the image header structure
-     * \param name Image name
-     */
-    void appImage_setName(struct AppImageHeader *header, const char *name);
+    enum BootError appImage_getSignatureMessage(const struct AppImageHeader *header, struct SignatureMessage *messageOut, char *messageBuff);
 
     /**
      * \brief Log event
@@ -395,8 +403,9 @@ extern "C"
      * \brief Initialize the boot log
      * \param flash Flash device used to store the log
      * \param address Address in flash where the log is stored
+     * \return 0 on success, BootError on error
      */
-    void bootLogInit(const struct FlashDevice *flash, uint32_t address);
+    enum BootError bootLogInit(const struct FlashDevice *flash, uint32_t address);
 
 #ifdef __cplusplus
 }

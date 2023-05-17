@@ -96,7 +96,7 @@ struct FlashDevice *bootInfo_getFlashDevice(enum AppImageStorage storage)
 		break;
 
 	default:
-		return NULL;
+		return &flashDevice_unknown;
 		break;
 	}
 }

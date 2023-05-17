@@ -346,7 +346,7 @@ int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo)
 
     // load image
 
-    int res = appImage_transfer(store, &bootInfo->appStore, bootInfo);
+    int res = appImage_transfer(store, &bootInfo->appStore, &bootInfoBuffer);
 
 #if 0 // For testing
     struct AppImageStore st2;
