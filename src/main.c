@@ -118,7 +118,9 @@ void k_sys_fatal_error_handler(unsigned int reason, const z_arch_esf_t *esf)
 
 void main(void)
 {
+
 	internalFlashDeviceId = device_get_binding(DT_NODE_FULL_NAME(DT_CHOSEN(zephyr_flash_controller)));
+
 	bootloader_run(&flashDevice_internalFlash, &flashDevice_internalFlash);
 
 	// should not reach here

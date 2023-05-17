@@ -57,6 +57,9 @@ struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff)
         return NULL;
     }
 
+    // copy the original boot info to the second half of the buffer
+    memcpy(&buff->bootInfo_orig, &buff->bootInfo, sizeof(struct BootInfo));
+
     if (info->version != BOOT_VERSION_0_0)
     {
         // Boot information not loaded, or different version. Reset info.
@@ -71,9 +74,6 @@ struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff)
 
     // make sure appStore parameters are not changed
     appImage_setStore(&info->appStore, BOOT_IMG_STORAGE_INTERNAL_FLASH, ROCKETZ_APP_ADDR, ROCKETZ_MAX_APPIMAGE_SIZE);
-
-    // copy the original boot info to the second half of the buffer
-    memcpy(&buff->bootInfo_orig, &buff->bootInfo, sizeof(struct BootInfo));
 
     res = bootInfo_save(address, buff);
 
@@ -522,7 +522,7 @@ enum BootError appImage_verify(const struct AppImageStore *store, const struct B
     }
 
 #if 1 // Checking variant pattern match should be done by the application
-    if (!isMatch(bootInfo->currentVariant, messageOut.variantPattern))
+    if (NULL != bootInfo && !isMatch(bootInfo->currentVariant, messageOut.variantPattern))
     {
         bootLog("WARNING: Image %.64s is signed for pattern %.64s that doesn't match current variant (%.64s)", header.imageName, messageOut.variantPattern, bootInfo->currentVariant);
         bootLog("HINT: use bootInfo_setCurrentVariant() to set the current variant");
@@ -619,7 +619,7 @@ void bootLog(const char *format, ...)
         logIndex = logStartIndex;
     }
 
-    if (logIndex % 4 != 0)
+    if (logIndex % ROCKETZ_FLASH_WRITE_ALIGNMENT != 0)
     {
         // make sure our writing is alligned to 4 bytes
         uint8_t j[ROCKETZ_FLASH_WRITE_ALIGNMENT];
@@ -629,7 +629,7 @@ void bootLog(const char *format, ...)
 
         int wres = logFlash->write(logIndex - logIndex % ROCKETZ_FLASH_WRITE_ALIGNMENT, j, ROCKETZ_FLASH_WRITE_ALIGNMENT);
 
-        logIndex += wres >= 0 ? wres : 0;
+        logIndex = logIndex - logIndex % ROCKETZ_FLASH_WRITE_ALIGNMENT + (wres >= 0 ? wres : 0);
     }
 
     va_list args;
@@ -641,6 +641,8 @@ void bootLog(const char *format, ...)
     vsprintf(buffer, format, args);
 
     va_end(args);
+
+    buffer[sizeof(buffer) - 1] = 0x00; // make sure we have null terminator
 
     int wres = logFlash->write(logIndex, buffer, strlen(buffer) + 1);
 

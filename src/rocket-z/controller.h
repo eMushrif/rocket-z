@@ -90,7 +90,7 @@ extern "C"
 
     enum AppImageHeaderVersion
     {
-        IMAGE_HEADER_VERSION_0_0 = 0xAB71BE9F, // MINOR_MAJOR
+        IMAGE_HEADER_VERSION_0_0 = 0xAB71BE9F, // 0xMINOR_MAJOR
     };
 
     enum AppImageEncryptionMethod
@@ -178,7 +178,7 @@ extern "C"
 
     enum BootInfoVersion
     {
-        BOOT_VERSION_0_0 = 0xF892,
+        BOOT_VERSION_0_0 = 0xF892ACB1, // 0xMINOR_MAJOR
     };
 
     /**
@@ -186,7 +186,7 @@ extern "C"
      */
     struct BootInfo
     {
-        int version; //< Struct version
+        uint32_t version; //< Struct version
 
         char bootloaderName[32]; //< Friendly bootloader name
 
@@ -326,7 +326,7 @@ extern "C"
     /**
      * \brief Performs multiple checks to verify that the image is loadable. Includes signature verification.
      * \param imageStore Pointer to the image information structure
-     * \param bootInfo Pointer to the boot information structure
+     * \param bootInfo Optional. Pointer to the boot information structure. If not NULL a warning will be logged if the given image doesn't have a matching variant to current one.
      * \return 0 if verified, BootError otherwise
      */
     enum BootError appImage_verify(const struct AppImageStore *imageStore, const struct BootInfo *bootInfo);
