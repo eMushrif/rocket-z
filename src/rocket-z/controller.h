@@ -90,7 +90,7 @@ extern "C"
 
     enum AppImageHeaderVersion
     {
-        IMAGE_HEADER_VERSION_0_0 = 0xAB71_BE9F, // MINOR_MAJOR
+        IMAGE_HEADER_VERSION_0_0 = 0xAB71BE9F, // MINOR_MAJOR
     };
 
     enum AppImageEncryptionMethod

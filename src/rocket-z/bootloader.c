@@ -19,8 +19,8 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
 
     if (bootInfo->version != BOOT_VERSION_0_0)
     {
-        bootLog("ERROR: Boot info version not supported. Restarting.");
-        sys_reboot();
+        bootLog("ERROR: Boot info version not supported.");
+        return;
     }
 
 #if 1 // For testing
@@ -47,7 +47,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
 
             if (res < 0)
             {
-                bootLog("ERROR: Store %d has load request but failed to read image header of image. Will not be loaded", i);
+                bootLog("ERROR: Store %d has load request but failed to read image header of image. Will not be loaded.", i);
                 appImage_setValid(&bootInfo->stores[i], false);
                 continue;
             }
@@ -103,7 +103,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
 
     if (res < 0)
     {
-        bootLog("ERROR: Failed to read image header of loaded image. Restarting.");
+        bootLog("ERROR: Failed to read image header of loaded image.");
         appImage_setValid(&bootInfo->appStore, false);
         rollback(&bootInfo);
         return;
@@ -114,8 +114,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
 
     if (res < 0)
     {
-        bootLog("ERROR: Failed to lock boot area. Restarting.");
-        sys_reboot();
+        bootLog("ERROR: Failed to lock boot area.");
         return;
     }
 
@@ -123,8 +122,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
 
     if (res < 0)
     {
-        bootLog("WARNING: Failed to lock app area. Restarting.");
-        sys_reboot();
+        bootLog("WARNING: Failed to lock app area.");
         return;
     }
 
@@ -132,8 +130,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
 
     if (res < 0)
     {
-        bootLog("WARNING: Failed to lock secret area. Restarting.");
-        sys_reboot();
+        bootLog("WARNING: Failed to lock secret area.");
         return;
     }
 
@@ -208,6 +205,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
     {
         bootLog("ERROR: Failed to verify signature of loaded image");
         rollback(&bootInfo);
+        return;
     }
 
     res = appImage_verifyChecksum(&bootInfo->appStore);
@@ -216,6 +214,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
     {
         bootLog("ERROR: Failed to verify checksum of loaded image");
         rollback(&bootInfo);
+        return;
     }
 
 #if 0 // For testing
@@ -243,10 +242,9 @@ void rollback(struct BootInfo *bootInfo)
     if (appImage_isValid(&bootInfo->appStore))
     {
         // set invalid
-        bootLog("INFO: Restarting to try again");
+        bootLog("INFO: Same image will be tried again");
         appImage_setValid(&bootInfo->appStore, false);
         bootInfo_save(ROCKETZ_INFO_ADDR, bootInfo);
-        sys_reboot();
         return;
     }
     else
@@ -264,51 +262,52 @@ void rollback(struct BootInfo *bootInfo)
             bootInfo->rollbackImageIndex = -1;
             appImage_setLoadRequest(&bootInfo->stores[bootInfo->rollbackImageIndex]);
             bootInfo_save(ROCKETZ_INFO_ADDR, bootInfo);
-            sys_reboot();
             return;
         }
         else
         {
             bootLog("INFO: No image is set as backup");
 
+            // try to find a valid image that is same as the current image
             for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
             {
+                if (!appImage_isValid(&bootInfo->stores[i]))
+                    continue;
+
                 int res = appImage_readHeader(&header, &bootInfo->stores[i]);
                 if (res < 0)
                     continue;
 
-                if (appImage_isValid(&bootInfo->stores[i]) && !appImage_isCurrent(&header, bootInfo))
+                if (!appImage_isCurrent(&header, bootInfo))
                 {
 
                     bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                     bootInfo->rollbackImageIndex = -1;
                     appImage_setLoadRequest(&bootInfo->stores[i]);
                     bootInfo_save(ROCKETZ_INFO_ADDR, bootInfo);
-                    sys_reboot();
                     return;
                 }
             }
 
+            // try to find any image at all
             for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
             {
+                if (!appImage_isValid(&bootInfo->stores[i]))
+                    continue;
+
                 int res = appImage_readHeader(&header, &bootInfo->stores[i]);
                 if (res < 0)
                     continue;
 
-                if (appImage_isValid(&bootInfo->stores[i]))
-                {
-                    bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
-                    bootInfo->rollbackImageIndex = -1;
-                    appImage_setLoadRequest(&bootInfo->stores[i]);
-                    bootInfo_save(ROCKETZ_INFO_ADDR, bootInfo);
-                    sys_reboot();
-                    return;
-                }
+                bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
+                bootInfo->rollbackImageIndex = -1;
+                appImage_setLoadRequest(&bootInfo->stores[i]);
+                bootInfo_save(ROCKETZ_INFO_ADDR, bootInfo);
+                return;
             }
 
-            bootLog("ERROR: No valid image can be rolled back to. Restarting.");
+            bootLog("ERROR: No valid image can be rolled back to.");
 
-            sys_reboot();
             return;
         }
     }
