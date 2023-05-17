@@ -3,6 +3,9 @@
 #include "pem-decode.h"
 #include "tiny-asn1.h"
 #include <string.h>
+#include <zephyr/kernel.h>
+
+K_HEAP_DEFINE(pem_heap, 1024);
 
 size_t pemExpectedSize(enum DerObjectType type)
 {
@@ -113,8 +116,9 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
         // failed to read object count or empty object
         return -1;
     }
-
-    asn1_tree *asn1_objects = (asn1_tree *)(k_malloc(sizeof(asn1_tree) * asn1_object_count));
+    
+    k_heap_init(&pem_heap, pem_heap.heap.init_mem, pem_heap.heap.init_bytes);
+    asn1_tree *asn1_objects = (asn1_tree *)(k_heap_alloc(&pem_heap, sizeof(asn1_tree) * asn1_object_count, K_NO_WAIT));
     if (asn1_objects == NULL)
     {
         // failed to allocate
@@ -124,7 +128,7 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
     if (der_decode(der, der_len, asn1_objects, asn1_objects + 1, asn1_object_count) < 0)
     {
         // failed to decode
-        k_free(asn1_objects);
+        k_heap_free(&pem_heap, asn1_objects);
         return -1;
     }
 
@@ -142,13 +146,13 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
 
         if (NULL == object)
         {
-            k_free(asn1_objects);
+            k_heap_free(&pem_heap, asn1_objects);
             return -1;
         }
 
         if (object->length < pemExpectedSize(type))
         {
-            free(asn1_objects);
+            k_heap_free(&pem_heap, asn1_objects);
             return -1;
         }
 
@@ -163,13 +167,13 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
 
         if (NULL == object)
         {
-            free(asn1_objects);
+            k_heap_free(&pem_heap, asn1_objects);
             return -1;
         }
 
         if (object->length < pemExpectedSize(type))
         {
-            free(asn1_objects);
+            k_heap_free(&pem_heap, asn1_objects);
             return -1;
         }
 
@@ -184,13 +188,13 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
 
         if (NULL == certObject)
         {
-            free(asn1_objects);
+            k_heap_free(&pem_heap, asn1_objects);
             return -1;
         }
 
         if (certObject->length < 32)
         {
-            free(asn1_objects);
+            k_heap_free(&pem_heap, asn1_objects);
             return -1;
         }
 
@@ -198,13 +202,13 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
 
         if (NULL == algoObject)
         {
-            free(asn1_objects);
+            k_heap_free(&pem_heap, asn1_objects);
             return -1;
         }
 
         if (algoObject->length < 32)
         {
-            free(asn1_objects);
+            k_heap_free(&pem_heap, asn1_objects);
             return -1;
         }
 
@@ -215,7 +219,7 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
     if (NULL != len)
         *len = pemExpectedSize(type);
 
-    free(asn1_objects);
+    k_heap_free(&pem_heap, asn1_objects);
 
     return identifierFound ? 0 : -1;
 }

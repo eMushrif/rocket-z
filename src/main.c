@@ -19,6 +19,11 @@ static const struct device *internalFlashDeviceId;
 
 int zephyrFlashRead(size_t address, void *data, size_t size)
 {
+	if (address + size > ROCKETZ_INTERNAL_FLASH_SIZE)
+	{
+		return -EINVAL;
+	}
+
 	if (fprotect_is_protected(address) & 2)
 	{
 		return -EPERM;
@@ -30,33 +35,48 @@ int zephyrFlashRead(size_t address, void *data, size_t size)
 
 int zephyrFlashErase(size_t address, size_t size)
 {
+	if (address + size > ROCKETZ_INTERNAL_FLASH_SIZE)
+	{
+		return -EINVAL;
+	}
+
 	if (fprotect_is_protected(address) & 1)
 	{
 		return -EPERM;
 	}
 
-	// allign the erase region with the BOOT_FLASH_BLOCK_SIZE
-	size = size % BOOT_FLASH_BLOCK_SIZE ? size + BOOT_FLASH_BLOCK_SIZE - size % BOOT_FLASH_BLOCK_SIZE : size;
+	// allign the erase region with the ROCKETZ_FLASH_BLOCK_SIZE
+	size = size % ROCKETZ_FLASH_BLOCK_SIZE ? size + ROCKETZ_FLASH_BLOCK_SIZE - size % ROCKETZ_FLASH_BLOCK_SIZE : size;
 	return flash_erase(internalFlashDeviceId, address, size);
 }
 
 int zephyrFlashWrite(size_t address, const void *data, size_t size)
 {
+	if (address + size > ROCKETZ_INTERNAL_FLASH_SIZE)
+	{
+		return -EINVAL;
+	}
+
 	if (fprotect_is_protected(address) & 1)
 	{
 		return -EPERM;
 	}
 
 	// data must be aligned in 4 bytes
-	int actSize = size % BOOT_FLASH_WRITE_ALIGNMENT ? size + BOOT_FLASH_WRITE_ALIGNMENT - size % BOOT_FLASH_WRITE_ALIGNMENT : size;
+	int actSize = size % ROCKETZ_FLASH_WRITE_ALIGNMENT ? size + ROCKETZ_FLASH_WRITE_ALIGNMENT - size % ROCKETZ_FLASH_WRITE_ALIGNMENT : size;
 	int res = flash_write(internalFlashDeviceId, address, data, actSize);
 	return res >= 0 ? actSize : res;
 }
 
 int zephyrFlashLock(size_t address, size_t size, enum FlashLockType lockType)
 {
+	if (address + size > ROCKETZ_INTERNAL_FLASH_SIZE)
+	{
+		return -EINVAL;
+	}
+
 	// round size up to flash block size
-	size = size % BOOT_FLASH_BLOCK_SIZE ? size + BOOT_FLASH_BLOCK_SIZE - size % BOOT_FLASH_BLOCK_SIZE : size;
+	size = size % ROCKETZ_FLASH_BLOCK_SIZE ? size + ROCKETZ_FLASH_BLOCK_SIZE - size % ROCKETZ_FLASH_BLOCK_SIZE : size;
 	return lockType == FLASH_LOCK_WRITE ? fprotect_area(address, size) : fprotect_area_no_access(address, size);
 }
 

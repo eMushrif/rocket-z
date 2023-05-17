@@ -16,37 +16,42 @@ extern "C"
 #include "stddef.h"
 #include <stdlib.h>
 #include <zephyr/kernel.h>
+#include "config.h"
 
-#ifndef BOOT_FLASH_BLOCK_SIZE
-#define BOOT_FLASH_BLOCK_SIZE 0x1000
+#ifndef ROCKETZ_FLASH_BLOCK_SIZE
+#define ROCKETZ_FLASH_BLOCK_SIZE 0x1000
 #endif
 
-#ifndef BOOT_FLASH_WRITE_ALIGNMENT
-#define BOOT_FLASH_WRITE_ALIGNMENT 4
+#ifndef ROCKETZ_FLASH_WRITE_ALIGNMENT
+#define ROCKETZ_FLASH_WRITE_ALIGNMENT 4
 #endif
 
-#ifndef BOOT_APP_ADDR
-#define BOOT_APP_ADDR 0x10000
+#ifndef ROCKETZ_APP_ADDR
+#define ROCKETZ_APP_ADDR 0x10000
 #endif
 
-#ifndef BOOT_MAX_APPIMAGE_SIZE
-#define BOOT_MAX_APPIMAGE_SIZE (0x100000 - BOOT_APP_ADDR) // 1MB - Bootloder size
+#ifndef ROCKETZ_INTERNAL_FLASH_SIZE
+#define ROCKETZ_INTERNAL_FLASH_SIZE 0x100000
 #endif
 
-#ifndef BOOT_INFO_ADDR
-#define BOOT_INFO_ADDR (BOOT_APP_ADDR - BOOT_FLASH_BLOCK_SIZE)
+#ifndef ROCKETZ_MAX_APPIMAGE_SIZE
+#define ROCKETZ_MAX_APPIMAGE_SIZE (ROCKETZ_INTERNAL_FLASH_SIZE - ROCKETZ_APP_ADDR) // 1MB - Bootloder size
 #endif
 
-#ifndef BOOT_LOG_ADDR
-#define BOOT_LOG_ADDR (BOOT_APP_ADDR - (2 * BOOT_FLASH_BLOCK_SIZE))
+#ifndef ROCKETZ_INFO_ADDR
+#define ROCKETZ_INFO_ADDR (ROCKETZ_APP_ADDR - ROCKETZ_FLASH_BLOCK_SIZE)
 #endif
 
-#ifndef BOOT_KEY_ADDR
-#define BOOT_KEY_ADDR (BOOT_APP_ADDR - (3 * BOOT_FLASH_BLOCK_SIZE))
+#ifndef ROCKETZ_LOG_ADDR
+#define ROCKETZ_LOG_ADDR (ROCKETZ_APP_ADDR - (2 * ROCKETZ_FLASH_BLOCK_SIZE))
 #endif
 
-#ifndef BOOT_SIGNATURE_MESSAGE_MAX_SIZE
-#define BOOT_SIGNATURE_MESSAGE_MAX_SIZE 512
+#ifndef ROCKETZ_KEY_ADDR
+#define ROCKETZ_KEY_ADDR (ROCKETZ_APP_ADDR - (3 * ROCKETZ_FLASH_BLOCK_SIZE))
+#endif
+
+#ifndef ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE
+#define ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE 512
 #endif
 
     enum BootError
@@ -91,8 +96,13 @@ extern "C"
 
     enum AppImageStorage
     {
-        BOOT_IMG_STORAGE_EXTERNAL_FLASH = 0,
-        BOOT_IMG_STORAGE_INTERNAL_FLASH,
+        BOOT_IMG_STORAGE_INTERNAL_FLASH = 0x819b,
+        BOOT_IMG_STORAGE_EXTERNAL_FLASH = 0x96f3,
+    };
+
+    enum AppImageStoreState
+    {
+        BOOT_IMG_STORE_VALID = 0x0f2d3c4b,
     };
 
 #pragma pack(4)
@@ -132,7 +142,7 @@ extern "C"
                     "sha256": "IiSuHNuVCD86YRg5lPAMFrRm8hjIp4jB3jncUhjQHRs="
                 }
             */
-            char message[BOOT_SIGNATURE_MESSAGE_MAX_SIZE];
+            char message[ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE];
         } signatureInfo;
     };
 
@@ -156,7 +166,7 @@ extern "C"
         enum AppImageStorage storage; //< Where the image is stored
         size_t startAddr;             //< Address in flash where the image is stored
         size_t maxSize;               //< Maximum size for storage of the image
-        bool isValid;                 //< Is the image stored valid
+        uint32_t isValid;             //< Is the image stored valid
 
         int32_t loadRequests; //< Inverted bit field of load requests
         int32_t loadAttempts; //< Inverted bit field of load attempts
@@ -189,6 +199,14 @@ extern "C"
 
         struct AppImageStore stores[4];
     };
+    /**
+     * \brief Bootloader information buffer. Contains BootInfo and a copy of the original BootInfo.
+     */
+    struct BootInfoBuffer
+    {
+        struct BootInfo bootInfo;
+        struct BootInfo bootInfo_orig;
+    };
 
     /**
      * \brief Get the flash device used to store images or boot info. Must be implemented externally.
@@ -207,17 +225,17 @@ extern "C"
     /**
      * \brief Load boot information from flash
      * \param address Address in flash where the boot information is stored
-     * \param info Pointer to the boot information structure output
+     * \param buff Pointer to the boot information structure output
      * \return Pointer to the boot information structure. Null if the boot information is invalid.
      */
-    struct BootInfo *bootInfo_load(uint32_t address, struct BootInfo *info);
+    struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff);
 
     /**
      * \brief Save boot information to flash if it has changed
      * \param address Address in flash where the boot information is stored
-     * \param info Pointer to the boot information structure
+     * \param info Pointer to the boot information structure buffer
      */
-    void bootInfo_save(uint32_t address, const struct BootInfo *info);
+    void bootInfo_save(uint32_t address, const struct BootInfoBuffer *info);
 
     /**
      * \brief Set image address in images store flash
@@ -234,6 +252,12 @@ extern "C"
      * \param valid Valid status
      */
     void appImage_setValid(struct AppImageStore *info, bool valid);
+
+    /**
+     * \brief Check if image is valid
+     * \param info Pointer to the image store struct
+     */
+    bool appImage_isValid(struct AppImageStore *info);
 
     /**
      * \brief Set currently-running image variant name
@@ -340,7 +364,7 @@ extern "C"
      * \brief Get the signature message data for an image
      * \param header Pointer to the image header structure
      * \param messageOut Pointer to the output of signature message data.
-     * \param messageBuff A buffer where message strings are stored. Must be at least of size BOOT_SIGNATURE_MESSAGE_MAX_SIZE
+     * \param messageBuff A buffer where message strings are stored. Must be at least of size ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE
      * \return 0 if verified, BootError otherwise
      */
     int appImage_getSignatureMessage(const struct AppImageHeader *header, struct SignatureMessage *messageOut, char *messageBuff);
