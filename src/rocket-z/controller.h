@@ -27,7 +27,7 @@ extern "C"
 #endif
 
 #ifndef ROCKETZ_APP_ADDR
-#define ROCKETZ_APP_ADDR 0x10000
+#define ROCKETZ_APP_ADDR 0x13000
 #endif
 
 #ifndef ROCKETZ_INTERNAL_FLASH_SIZE
@@ -57,36 +57,42 @@ extern "C"
     enum BootError
     {
         BOOT_ERROR_SUCCESS = 0,
-        BOOT_ERROR_UNKNOWN = -1,
-        BOOT_ERROR_SIGNATURE_MESSAGE_INVALID = -2,
-        BOOT_ERROR_SIGNER_HAS_LIMITED_PERMISSIONS = -3,
-        BOOT_ERROR_UNKNOWN_SIGNER = -4,
-        BOOT_ERROR_INVALID_SIGNATURE = -5,
-        BOOT_ERROR_INVALID_SIZE = -6,
-        BOOT_ERROR_FAILED_PARSE = -7,
-        BOOT_ERROR_FAILED_CHECKSUM = -8,
-        BOOT_ERROR_INVALID_HEADER_VERSION = -9,
-        BOOT_ERROR_UNSUPPORTED_ENCRYPTION_METHOD = -10,
-        BOOT_ERROR_INPUT_STRING_TOO_LONG = -11,
-        BOOT_ERROR_APP_IMAGE_NOT_VALID = -12,
+        BOOT_ERROR_UNKNOWN = -2000,
+        BOOT_ERROR_SIGNATURE_MESSAGE_INVALID = -6002,
+        BOOT_ERROR_AUTHENTICATOR_HAS_LIMITED_PERMISSIONS = -6003,
+        BOOT_ERROR_NO_AUTHENTICATOR = -6004,
+        BOOT_ERROR_INVALID_SIGNATURE = -6005,
+        BOOT_ERROR_INVALID_SIZE = -6006,
+        BOOT_ERROR_FAILED_PARSE = -6007,
+        BOOT_ERROR_FAILED_CHECKSUM = -6008,
+        BOOT_ERROR_INVALID_HEADER_VERSION = -6009,
+        BOOT_ERROR_UNSUPPORTED_ENCRYPTION_METHOD = -6010,
+        BOOT_ERROR_APP_IMAGE_NOT_VALID = -6012,
+        BOOT_ERROR_UNKNOWN_DEVICE = -ENODEV,
+        BOOT_ERROR_MEMORY_LOCKED = -EACCES,
+        BOOT_ERROR_BAD_ARGUMENT = -EINVAL,
+        BOOT_ERROR_INVALID_ADDRESS = -EFAULT,
+        BOOT_ERROR_NOT_IMPLEMENTED = -ENOSYS,
+        BOOT_ERROR_NOT_SUPPORTED = -ENOTSUP,
+        BOOT_ERROR_TOO_LARGE = -EOVERFLOW,
     };
 
-    enum FlashLockType
+    enum BootFlashLockType
     {
         FLASH_LOCK_READ = 1 << 0,
         FLASH_LOCK_WRITE = 1 << 1,
         FLASH_LOCK_ALL = FLASH_LOCK_READ | FLASH_LOCK_WRITE,
     };
 
-    struct FlashDevice
+    struct BootFlashDevice
     {
         int (*read)(size_t address, void *data, size_t size);
         int (*erase)(size_t address, size_t size);
         int (*write)(size_t address, const void *data, size_t size);
-        int (*lock)(size_t address, size_t size, enum FlashLockType lockType); //< Optional. If not provided, will be used for internal flash only.
+        int (*lock)(size_t address, size_t size, enum BootFlashLockType lockType); //< Optional. If not provided, will be used for internal flash only.
     };
 
-    extern struct FlashDevice flashDevice_unknown;
+    extern struct BootFlashDevice flashDevice_unknown;
 
     enum AppImageHeaderVersion
     {
@@ -96,6 +102,11 @@ extern "C"
     enum AppImageEncryptionMethod
     {
         ENCRYPTION_EC_P256_AES_128_CBC_SHA_256 = 1,
+    };
+
+    enum BootSignatureVersion
+    {
+        SIGNATURE_VERSION_0_0 = 0x0, // 0xMINOR_MAJOR
     };
 
     enum AppImageStorage
@@ -132,13 +143,14 @@ extern "C"
         // signature info
         struct
         {
+            uint32_t signatureVersion;
             uint8_t signature[64];
             /**
              * \brief Digest message as a JSON string. See SignatureMessage struct for details.
              * example:
              * {
                     "version": 0,
-                    "provider": "zodiac-api",
+                    "authenticator": "zodiac-api",
                     "userId": "584",
                     "time": 1680531112,
                     "variantPattern": "my-product-*:master",
@@ -150,10 +162,9 @@ extern "C"
         } signatureInfo;
     };
 
-    struct SignatureMessage
+    struct AppImageSignatureMessage
     {
-        int32_t version;
-        char *provider;
+        char *authenticator;
         char *userId;
         uint32_t time;
         char *variantPattern;
@@ -170,7 +181,7 @@ extern "C"
         enum AppImageStorage storage; //< Where the image is stored
         size_t startAddr;             //< Address in flash where the image is stored
         size_t maxSize;               //< Maximum size for storage of the image
-        uint32_t isValid;             //< Is the image stored valid
+        uint32_t hasImage;            //< Is the store contains a valid image
 
         int32_t loadRequests; //< Inverted bit field of load requests
         int32_t loadAttempts; //< Inverted bit field of load attempts
@@ -216,7 +227,7 @@ extern "C"
      * \brief Get the flash device used to store images or boot info. Must be implemented externally.
      * \param storage Storage type
      */
-    struct FlashDevice *bootInfo_getFlashDevice(enum AppImageStorage storage);
+    struct BootFlashDevice *bootInfo_getFlashDevice(enum AppImageStorage storage);
 
     /**
      * \brief Generate random bytes. Must be implemented externally.
@@ -251,14 +262,6 @@ extern "C"
     bool appImage_isCurrent(const struct AppImageHeader *header, const struct BootInfo *bootInfo);
 
     /**
-     * \brief Set image name
-     * \param header Pointer to the image header structure
-     * \param name Image name
-     * \return 0 on success, BootError on error
-     */
-    enum BootError appImage_setName(struct AppImageHeader *header, const char *name);
-
-    /**
      * \brief Set image address in images store flash
      * \param info Pointer to the image information structure
      * \param type Where the image is stored
@@ -268,18 +271,18 @@ extern "C"
     void appImage_setStore(struct AppImageStore *info, enum AppImageStorage storage, size_t offset, size_t maxSize);
 
     /**
-     * \brief Set image valid status
-     * \param info Pointer to the image store struct
-     * \param valid Valid status
+     * \brief Set whethre a store has a valid image
+     * \param store Pointer to the image store struct
+     * \param status target status
      */
-    void appImage_setValid(struct AppImageStore *info, bool valid);
+    void appImage_setHasImage(struct AppImageStore *store, bool hasImage);
 
     /**
-     * \brief Check if image is valid
-     * \param info Pointer to the image store struct
+     * \brief Check if store contains image data
+     * \param store Pointer to the image store struct
      * \return true if image is valid, false otherwise
      */
-    bool appImage_isValid(struct AppImageStore *info);
+    bool appImage_hasImage(const struct AppImageStore *store);
 
     /**
      * \brief Set currently-running image variant name
@@ -332,7 +335,7 @@ extern "C"
     enum BootError appImage_verify(const struct AppImageStore *imageStore, const struct BootInfo *bootInfo);
 
     /**
-     * \brief Perfrom checksum on image
+     * \brief Perfrom checksum on image. It can only be done in the bootloader as it requires decrypting the image.
      * \param store Pointer to the image store
      * \return 0 if checksum matches signature, BootError on error
      */
@@ -366,6 +369,22 @@ extern "C"
     void bootInfo_failClear(struct BootInfo *info);
 
     /**
+     * \brief Set image name
+     * \param header Pointer to the image header structure
+     * \param name Image name
+     * \return 0 on success, BootError on error
+     */
+    enum BootError appImage_setName(struct AppImageHeader *header, const char *name);
+
+    /**
+     * \brief Set image header version and size
+     * \param header Pointer to the image header structure
+     * \param version Image header version
+     * \param size Image header size
+     */
+    void appImage_setHeader(struct AppImageHeader *header, enum AppImageHeaderVersion version, size_t size);
+
+    /**
      * \brief Set encryption information for an image
      * \param header Pointer to the image header structure
      * \param pubKey Public key used for encryption. PEM-formatted. With or without header and footer.
@@ -379,9 +398,10 @@ extern "C"
      * \param header Pointer to the image header structure
      * \param message Digest message as a JSON string
      * \param signature Signature of the message. PEM-formatted. With or without header and footer.
+     * \param signatureVersion Signature version
      * \return 0 on success, BootError on error
      */
-    enum BootError appImage_setSignature(struct AppImageHeader *header, const char *message, const char *signature);
+    enum BootError appImage_setSignature(struct AppImageHeader *header, const char *message, const char *signature, enum BootSignatureVersion signatureVersion);
 
     /**
      * \brief Get the signature message data for an image
@@ -390,7 +410,7 @@ extern "C"
      * \param messageBuff A buffer where message strings are stored. Must be at least of size ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE
      * \return 0 if verified, BootError otherwise
      */
-    enum BootError appImage_getSignatureMessage(const struct AppImageHeader *header, struct SignatureMessage *messageOut, char *messageBuff);
+    enum BootError appImage_getSignatureMessage(const struct AppImageHeader *header, struct AppImageSignatureMessage *messageOut, char *messageBuff);
 
     /**
      * \brief Log event
@@ -405,7 +425,7 @@ extern "C"
      * \param address Address in flash where the log is stored
      * \return 0 on success, BootError on error
      */
-    enum BootError bootLogInit(const struct FlashDevice *flash, uint32_t address);
+    enum BootError bootLogInit(const struct BootFlashDevice *flash, uint32_t address);
 
 #ifdef __cplusplus
 }

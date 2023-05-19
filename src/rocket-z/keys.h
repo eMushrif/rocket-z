@@ -3,19 +3,29 @@
 #ifndef KEYS_H
 #define KEYS_H
 
-const char *zodiacSignerPub =
-    "-----BEGIN PUBLIC KEY-----"
-    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEEzplyt9lz+PlpjGRAGEaxC75HgKU"
-    "QH9vc8gwngoc9dq1BHffQFEXJ3dO4+otvF9C44ALki/QxX13rG4QJqOJ3w=="
-    "-----END PUBLIC KEY-----";
+struct BootAuthenticator
+{
+    const char *name;
+    const char *variantPattern;
+    const char *pubKey;
+};
 
-const uint8_t rocketZPub[] = {
-    0x04, 0xef, 0x4a, 0xd2, 0xef, 0xb0, 0xaf, 0x29, 0x7b, 0xa5,
-    0x5c, 0xcd, 0x42, 0xc7, 0x40, 0xaa, 0x6e, 0x73, 0x1c, 0xb9,
-    0xa0, 0x39, 0xd6, 0x93, 0x44, 0xda, 0xa5, 0xac, 0x9a, 0x57,
-    0x09, 0x18, 0xd3, 0xa3, 0x49, 0x27, 0x03, 0xd4, 0x2f, 0x9c,
-    0xa7, 0x37, 0x7a, 0x25, 0x54, 0xdd, 0xeb, 0x72, 0xe7, 0x57,
-    0x57, 0x26, 0x09, 0xa6, 0xcd, 0x0a, 0x68, 0xc2, 0xa4, 0xf3,
-    0x3f, 0x03, 0xdf, 0xb1, 0x08};
+#define BOOT_AUTHENTICATOR_COUNT 1
+
+static const struct BootAuthenticator bootAuthenticators[BOOT_AUTHENTICATOR_COUNT] = {
+    {.name = "Zodiac",
+     .variantPattern = "*",
+     .pubKey =
+         "-----BEGIN PUBLIC KEY-----"
+         "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEEzplyt9lz+PlpjGRAGEaxC75HgKU"
+         "QH9vc8gwngoc9dq1BHffQFEXJ3dO4+otvF9C44ALki/QxX13rG4QJqOJ3w=="
+         "-----END PUBLIC KEY-----"},
+};
+
+static const char *rocketZPub =
+    "-----BEGIN PUBLIC KEY-----"
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE70rS77CvKXulXM1Cx0CqbnMcuaA5"
+    "1pNE2qWsmlcJGNOjSScD1C+cpzd6JVTd63LnV1cmCabNCmjCpPM/A9+xCA=="
+    "-----END PUBLIC KEY-----";
 
 #endif // KEYS_H

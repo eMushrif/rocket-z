@@ -2,12 +2,21 @@
 #include <string.h>
 #include <zephyr/sys/base64.h>
 
-static struct FlashDevice *internalFlash;
+static struct BootFlashDevice *internalFlash;
 struct BootInfoBuffer bootInfoBuffer;
 
-void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_imageFlash)
+void bootloader_run(struct BootFlashDevice *_internalFlash, struct BootFlashDevice *_imageFlash)
 {
     internalFlash = _internalFlash;
+
+    // lock bootloadaer memory
+    int res = internalFlash->lock(0x0, ROCKETZ_KEY_ADDR, FLASH_LOCK_WRITE);
+
+    if (res < 0)
+    {
+        bootLog("ERROR: Failed to lock boot area.");
+        return;
+    }
 
     bootLogInit(_internalFlash, ROCKETZ_LOG_ADDR);
 
@@ -29,9 +38,9 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
     struct AppImageHeader h;
     appImage_setName(&h, "image0");
     appImage_setEncryption(&h, "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElHbYKCCRqq7Tl7kJrWf+8feaydJoH/SInipkPHoMiljLbo4X8u8oEaDZqmWpXAqN6bhvJYSUL/RpLLKS2kDD5A==", ENCRYPTION_EC_P256_AES_128_CBC_SHA_256, 12032);
-    appImage_setSignature(&h, "{\"version\":0,\"provider\":\"zodiac\",\"userId\":\"584\",\"time\":1680531112,\"variantPattern\":\"my-product-*:master\",\"size\":12025,\"sha256\":\"BYZX3lDea4TvtBbf8cQQQvrUIEyHoeWA9K9kNuq0o5U=\"}", "MEYCIQD4FqLfB7OzWUlGCEVbSOSoTohLd2fwp8a5VIP01D0NxwIhAPvgxdI2uUPcH/HhndPGbrxpkCRgSE+8K9GdKLoTIrFq");
+    appImage_setSignature(&h, "{\"authenticator\":\"Zodiac\",\"userId\":\"584\",\"time\":1680531112,\"variantPattern\":\"my-product-*:master\",\"size\":12025,\"sha256\":\"BYZX3lDea4TvtBbf8cQQQvrUIEyHoeWA9K9kNuq0o5U=\"}", "MEYCIQCU8GiKvhIQxU/dEMC6wYo2QudistoHe0R2pIDiPMQ+BgIhAJ6+5YPWtxSfrn1ICKfmSzb7VfJVHFBcuIqfrA7jauWF", SIGNATURE_VERSION_0_0);
     appImage_setLoadRequest(&bootInfo->stores[0]);
-    appImage_setValid(&bootInfo->stores[0], true);
+    appImage_setHasImage(&bootInfo->stores[0], true);
     bootInfo_setCurrentVariant(bootInfo, "my-product-dev:master");
 #endif
 
@@ -56,11 +65,11 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
             if (res < 0)
             {
                 bootLog("ERROR: Store %d has load request but failed to read image header of image. Will not be loaded.", i);
-                appImage_setValid(&bootInfo->stores[i], false);
+                appImage_setHasImage(&bootInfo->stores[i], false);
                 continue;
             }
 
-            bootLog("INFO: Found Image %.64s in store", header.imageName);
+            bootLog("INFO: Found Image \"%.64s\" in store", header.imageName);
 
             // verify new image
             int verified = appImage_verify(&bootInfo->stores[i], bootInfo);
@@ -68,7 +77,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
             if (verified < 0)
             {
                 bootLog("ERROR: Image %d:%.64s failed verification. Will not be loaded.", i, header.imageName);
-                appImage_setValid(&bootInfo->stores[i], false);
+                appImage_setHasImage(&bootInfo->stores[i], false);
                 continue;
             }
 
@@ -78,7 +87,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
             if (verified < 0)
             {
                 bootLog("ERROR: Image %d:%.64s failed checksum verification. Will not be loaded.", i, header.imageName);
-                appImage_setValid(&bootInfo->stores[i], false);
+                appImage_setHasImage(&bootInfo->stores[i], false);
                 continue;
             }
 
@@ -92,7 +101,6 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
                 continue;
             }
 
-            appImage_setValid(&bootInfo->stores[i], true);
             bootInfo_failClear(bootInfo);
 
             break;
@@ -101,22 +109,13 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
 
     bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
 
-    int res = appImage_readHeader(&header, &bootInfo->appStore);
+    res = appImage_readHeader(&header, &bootInfo->appStore);
 
     if (res < 0)
     {
         bootLog("ERROR: Failed to read image header of loaded image.");
-        appImage_setValid(&bootInfo->appStore, false);
+        appImage_setHasImage(&bootInfo->appStore, false);
         rollback();
-        return;
-    }
-
-    // lock memory
-    res = internalFlash->lock(0x0, ROCKETZ_KEY_ADDR, FLASH_LOCK_WRITE);
-
-    if (res < 0)
-    {
-        bootLog("ERROR: Failed to lock boot area.");
         return;
     }
 
@@ -194,14 +193,14 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
         if (bootInfo_getFailCount(bootInfo) > bootInfo->failCountMax)
         {
             bootLog("ERROR: Current image failed to clear fail flags many times (max %d). Rolling back", bootInfo->failCountMax);
-            appImage_setValid(&bootInfo->appStore, false);
+            appImage_setHasImage(&bootInfo->appStore, false);
             rollback();
             return;
         }
     }
 
     // verify loaded image
-    res = appImage_verify(&bootInfo->appStore, bootInfo);
+    res = appImage_verifySignature(&header);
 
     if (res < 0)
     {
@@ -229,7 +228,7 @@ void bootloader_run(struct FlashDevice *_internalFlash, struct FlashDevice *_ima
     }
 #endif
 
-    appImage_setValid(&bootInfo->appStore, true);
+    appImage_setHasImage(&bootInfo->appStore, true);
 
     bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
 
@@ -243,11 +242,11 @@ void rollback()
 {
     struct BootInfo *bootInfo = &bootInfoBuffer.bootInfo;
 
-    if (appImage_isValid(&bootInfo->appStore))
+    if (appImage_hasImage(&bootInfo->appStore))
     {
-        // set invalid
+        // set invalid image
         bootLog("INFO: Same image will be tried again");
-        appImage_setValid(&bootInfo->appStore, false);
+        appImage_setHasImage(&bootInfo->appStore, false);
         bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
         return;
     }
@@ -272,10 +271,10 @@ void rollback()
         {
             bootLog("INFO: No image is set as backup");
 
-            // try to find a valid image that is same as the current image
+            // try to find any store with an image image that is not same as the current image
             for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
             {
-                if (!appImage_isValid(&bootInfo->stores[i]))
+                if (!appImage_hasImage(&bootInfo->stores[i]))
                     continue;
 
                 int res = appImage_readHeader(&header, &bootInfo->stores[i]);
@@ -296,7 +295,7 @@ void rollback()
             // try to find any image at all
             for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
             {
-                if (!appImage_isValid(&bootInfo->stores[i]))
+                if (!appImage_hasImage(&bootInfo->stores[i]))
                     continue;
 
                 int res = appImage_readHeader(&header, &bootInfo->stores[i]);
@@ -319,7 +318,9 @@ void rollback()
 
 int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo)
 {
-    if (appImage_isValid(&bootInfo->appStore))
+    bootInfo->rollbackImageIndex = -1;
+
+    if (appImage_hasImage(&bootInfo->appStore))
     {
         // Find current image and set rollback image
         for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
@@ -332,17 +333,13 @@ int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo)
                 continue;
             }
 
-            if (appImage_isValid(&bootInfo->stores[i]) && appImage_isCurrent(&header, bootInfo))
+            if (appImage_hasImage(&bootInfo->stores[i]) && appImage_isCurrent(&header, bootInfo))
             {
                 bootLog("INFO: Image %d:%.64s is selected as backup", i, header.imageName);
                 bootInfo->rollbackImageIndex = i;
                 break;
             }
         }
-    }
-    else
-    {
-        bootInfo->rollbackImageIndex = -1;
     }
 
     bootLog("INFO: Starting image transfer");

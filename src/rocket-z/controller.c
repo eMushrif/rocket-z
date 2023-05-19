@@ -14,28 +14,28 @@
 int unknownFlashRead(size_t address, void *data, size_t size)
 {
     bootLog("ERROR: Unknown flash device identifier");
-    return -1;
+    return BOOT_ERROR_UNKNOWN_DEVICE;
 }
 
 int unknownFlashErase(size_t address, size_t size)
 {
     bootLog("ERROR: Unknown flash device identifier");
-    return -1;
+    return BOOT_ERROR_UNKNOWN_DEVICE;
 }
 
 int unknownFlashWrite(size_t address, const void *data, size_t size)
 {
     bootLog("ERROR: Unknown flash device identifier");
-    return -1;
+    return BOOT_ERROR_UNKNOWN_DEVICE;
 }
 
-int unknownFlashLock(size_t address, size_t size, enum FlashLockType lockType)
+int unknownFlashLock(size_t address, size_t size, enum BootFlashLockType lockType)
 {
     bootLog("ERROR: Unknown flash device identifier");
-    return -1;
+    return BOOT_ERROR_UNKNOWN_DEVICE;
 }
 
-struct FlashDevice flashDevice_unknown = {
+struct BootFlashDevice flashDevice_unknown = {
     .read = unknownFlashRead,
     .erase = unknownFlashErase,
     .write = unknownFlashWrite,
@@ -131,7 +131,7 @@ enum BootError bootInfo_save(uint32_t address, const struct BootInfoBuffer *info
 
 enum BootError appImage_readHeader(struct AppImageHeader *header, const struct AppImageStore *store)
 {
-    struct FlashDevice *device = bootInfo_getFlashDevice(store->storage);
+    struct BootFlashDevice *device = bootInfo_getFlashDevice(store->storage);
 
     int res = device->read(store->startAddr, header, sizeof(struct AppImageHeader));
 
@@ -142,6 +142,24 @@ enum BootError appImage_readHeader(struct AppImageHeader *header, const struct A
     }
 
     bool isStringsOk = false;
+
+    // make sure strings don't cause issues because of missing null terminator
+    for (int i = 0; i < sizeof(struct AppImageHeader); i++)
+    {
+        if (((uint8_t *)header)[i] != 0xFF)
+        {
+            isStringsOk = true;
+            break;
+        }
+    }
+
+    if (!isStringsOk)
+    {
+        bootLog("ERROR: Image header is invalid. Area seems to be erased.", header->headerVersion);
+        return BOOT_ERROR_FAILED_PARSE;
+    }
+
+    isStringsOk = false;
 
     // make sure strings don't cause issues because of missing null terminator
     for (int i = sizeof(header->imageName) - 1; i >= 0; i--)
@@ -156,8 +174,10 @@ enum BootError appImage_readHeader(struct AppImageHeader *header, const struct A
     if (!isStringsOk)
     {
         bootLog("ERROR: Image header is invalid or version (%d) is not supported; imageName is longer that it should be", header->headerVersion);
-        return BOOT_ERROR_INVALID_HEADER_VERSION;
+        return BOOT_ERROR_TOO_LARGE;
     }
+
+    isStringsOk = false;
 
     for (int i = sizeof(header->signatureInfo.message) - 1; i >= 0; i--)
     {
@@ -171,7 +191,7 @@ enum BootError appImage_readHeader(struct AppImageHeader *header, const struct A
     if (!isStringsOk)
     {
         bootLog("ERROR: Image header is invalid or version (%d) is not supported; signature message is longer that it should be", header->headerVersion);
-        return BOOT_ERROR_INVALID_HEADER_VERSION;
+        return BOOT_ERROR_TOO_LARGE;
     }
 
     // check major version
@@ -186,15 +206,18 @@ enum BootError appImage_readHeader(struct AppImageHeader *header, const struct A
 
 enum BootError appImage_setName(struct AppImageHeader *header, const char *name)
 {
-    header->headerVersion = IMAGE_HEADER_VERSION_0_0;
-    header->headerSize = sizeof(struct AppImageHeader);
-
     if (strlen(name) <= sizeof(header->imageName) - 1)
         strcpy(header->imageName, name);
     else
-        return BOOT_ERROR_INPUT_STRING_TOO_LONG;
+        return BOOT_ERROR_TOO_LARGE;
 
     return BOOT_ERROR_SUCCESS;
+}
+
+void appImage_setHeader(struct AppImageHeader *header, enum AppImageHeaderVersion version, size_t size)
+{
+    header->headerVersion = version;
+    header->headerSize = size;
 }
 
 enum BootError appImage_setStorage(struct AppImageStore *info, size_t address, enum AppImageStorage storage, size_t maxSize)
@@ -205,15 +228,14 @@ enum BootError appImage_setStorage(struct AppImageStore *info, size_t address, e
     return BOOT_ERROR_SUCCESS;
 }
 
-enum BootError appImage_setSignature(struct AppImageHeader *header, const char *message, const char *signature)
+enum BootError appImage_setSignature(struct AppImageHeader *header, const char *message, const char *signature, enum BootSignatureVersion version)
 {
-    header->headerVersion = IMAGE_HEADER_VERSION_0_0;
-    header->headerSize = sizeof(struct AppImageHeader);
+    header->signatureInfo.signatureVersion = version;
 
     if (strlen(message) <= sizeof(header->signatureInfo.message) - 1)
         strcpy(header->signatureInfo.message, message);
     else
-        return BOOT_ERROR_INPUT_STRING_TOO_LONG;
+        return BOOT_ERROR_TOO_LARGE;
 
     int len = 0;
     int res = pemExtract(signature, EC_P256_SIGNATURE, header->signatureInfo.signature, &len);
@@ -234,9 +256,6 @@ enum BootError appImage_setSignature(struct AppImageHeader *header, const char *
 
 enum BootError appImage_setEncryption(struct AppImageHeader *header, const char *pubKey, enum AppImageEncryptionMethod method, size_t encryptedSize)
 {
-    header->headerVersion = IMAGE_HEADER_VERSION_0_0;
-    header->headerSize = sizeof(struct AppImageHeader);
-
     int len = 0;
     int res = pemExtract(pubKey, EC_P256_PUBLIC_KEY, header->encryption.pubKey, &len);
 
@@ -257,14 +276,14 @@ enum BootError appImage_setEncryption(struct AppImageHeader *header, const char 
     return BOOT_ERROR_SUCCESS;
 }
 
-void appImage_setValid(struct AppImageStore *info, bool valid)
+void appImage_setHasImage(struct AppImageStore *info, bool valid)
 {
-    info->isValid = BOOT_IMG_STORE_VALID;
+    info->hasImage = valid ? BOOT_IMG_STORE_VALID : 0;
 }
 
-bool appImage_isValid(struct AppImageStore *info)
+bool appImage_hasImage(const struct AppImageStore *info)
 {
-    return info->isValid == BOOT_IMG_STORE_VALID;
+    return info->hasImage == BOOT_IMG_STORE_VALID;
 }
 
 enum BootError bootInfo_setCurrentVariant(struct BootInfo *info, const char *variant)
@@ -272,7 +291,7 @@ enum BootError bootInfo_setCurrentVariant(struct BootInfo *info, const char *var
     if (strlen(variant) <= sizeof(info->currentVariant) - 1)
         strcpy(info->currentVariant, variant);
     else
-        return BOOT_ERROR_INPUT_STRING_TOO_LONG;
+        return BOOT_ERROR_TOO_LARGE;
 
     return BOOT_ERROR_SUCCESS;
 }
@@ -375,19 +394,18 @@ bool isMatch(const char *str, const char *pattern)
     // true if every remaining char in p is wildcard
 }
 
-#define DESCR_ARRAY_SIZE 7
+#define DESCR_ARRAY_SIZE 6
 
 struct json_obj_descr descr[DESCR_ARRAY_SIZE] = {
-    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, version, JSON_TOK_NUMBER),
-    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, provider, JSON_TOK_STRING),
-    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, userId, JSON_TOK_STRING),
-    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, time, JSON_TOK_NUMBER),
-    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, variantPattern, JSON_TOK_STRING),
-    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, size, JSON_TOK_NUMBER),
-    JSON_OBJ_DESCR_PRIM(struct SignatureMessage, sha256, JSON_TOK_STRING),
+    JSON_OBJ_DESCR_PRIM(struct AppImageSignatureMessage, authenticator, JSON_TOK_STRING),
+    JSON_OBJ_DESCR_PRIM(struct AppImageSignatureMessage, userId, JSON_TOK_STRING),
+    JSON_OBJ_DESCR_PRIM(struct AppImageSignatureMessage, time, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(struct AppImageSignatureMessage, variantPattern, JSON_TOK_STRING),
+    JSON_OBJ_DESCR_PRIM(struct AppImageSignatureMessage, size, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(struct AppImageSignatureMessage, sha256, JSON_TOK_STRING),
 };
 
-enum BootError appImage_getSignatureMessage(const struct AppImageHeader *header, struct SignatureMessage *messageOut, char *messageBuff)
+enum BootError appImage_getSignatureMessage(const struct AppImageHeader *header, struct AppImageSignatureMessage *messageOut, char *messageBuff)
 {
     strcpy(messageBuff, header->signatureInfo.message);
 
@@ -399,7 +417,7 @@ enum BootError appImage_getSignatureMessage(const struct AppImageHeader *header,
         return BOOT_ERROR_SIGNATURE_MESSAGE_INVALID;
     }
 
-    if (!((parseResult & 127) == 127))
+    if (!((parseResult & 0b111111) == 0b111111))
     {
         for (int i = 0; i < DESCR_ARRAY_SIZE; i++)
         {
@@ -417,7 +435,7 @@ enum BootError appImage_getSignatureMessage(const struct AppImageHeader *header,
 
 enum BootError appImage_verifySignature(const struct AppImageHeader *imageInfo)
 {
-    struct SignatureMessage messageOut;
+    struct AppImageSignatureMessage messageOut;
     char messageBuff[ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE];
 
     int res = appImage_getSignatureMessage(imageInfo, &messageOut, messageBuff);
@@ -427,35 +445,43 @@ enum BootError appImage_verifySignature(const struct AppImageHeader *imageInfo)
         return res;
     }
 
-    uint8_t signerKey[64];
+    uint8_t authenticatorKey[64];
     int len = 0;
 
-    if (0 == strcmp(messageOut.provider, "zodiac"))
+    for (int i = 0; i < (BOOT_AUTHENTICATOR_COUNT + 1); i++)
     {
-        // make sure this provider is allowed to sign given pattern
-        if (!isMatch(messageOut.variantPattern, "*")) // zodiac is allowed to sign any variant
+        if (i == BOOT_AUTHENTICATOR_COUNT)
         {
-            bootLog("ERROR: Image %.64s is signed by %.64s but this provider is not expected to sign this variant pattern (%.64s)", imageInfo->imageName, messageOut.provider, messageOut.variantPattern);
-            return BOOT_ERROR_SIGNER_HAS_LIMITED_PERMISSIONS;
+            // Authenticator not found
+            bootLog("ERROR: Image %.64s is signed by unknown authenticator %.64s", imageInfo->imageName, messageOut.authenticator);
+            return BOOT_ERROR_NO_AUTHENTICATOR;
         }
-
-        int res = pemExtract(zodiacSignerPub, EC_P256_PUBLIC_KEY, signerKey, &len);
-
-        if (len <= 0)
+        else if (0 == strcmp(messageOut.authenticator, bootAuthenticators[i].name))
         {
-            bootLog("ERROR: Parsing public key for signer %.64s failed. Expecting PEM-formatted prime256v1 string.", messageOut.provider);
-            return BOOT_ERROR_FAILED_PARSE;
-        }
+            // make sure this authenticator is allowed to sign given pattern
+            if (!isMatch(messageOut.variantPattern, bootAuthenticators[i].variantPattern)) // zodiac is allowed to sign any variant
+            {
+                bootLog("ERROR: Image %.64s is signed by %.64s but this authenticator is not expected to sign this variant pattern (%.64s)", imageInfo->imageName, messageOut.authenticator, messageOut.variantPattern);
+                continue;
+                // return BOOT_ERROR_AUTHENTICATOR_HAS_LIMITED_PERMISSIONS;
+            }
 
-        if (res < 0)
-        {
-            bootLog("WARNING: Reading public key for %.64s. Expecting PEM-formatted prime2561v1 string. Not sure what the given string is but I'll try it.\n", messageOut.provider);
+            int res = pemExtract(bootAuthenticators[i].pubKey, EC_P256_PUBLIC_KEY, authenticatorKey, &len);
+
+            if (len <= 0)
+            {
+                bootLog("ERROR: Parsing public key for authenticator %.64s failed. Expecting PEM-formatted prime256v1 string.", messageOut.authenticator);
+                continue;
+                // return BOOT_ERROR_FAILED_PARSE;
+            }
+
+            if (res < 0)
+            {
+                bootLog("WARNING: Reading public key for %.64s. Expecting PEM-formatted prime2561v1 string. Not sure what the given string is but I'll try it.\n", messageOut.authenticator);
+            }
+
+            break;
         }
-    }
-    else
-    {
-        bootLog("ERROR: Image %.64s is signed by unknown provider %.64s", imageInfo->imageName, messageOut.provider);
-        return false;
     }
 
     struct tc_sha256_state_struct digestSha;
@@ -468,7 +494,7 @@ enum BootError appImage_verifySignature(const struct AppImageHeader *imageInfo)
 
     tc_sha256_final(digest, &digestSha);
 
-    if (!uECC_verify(signerKey, digest, TC_SHA256_DIGEST_SIZE, imageInfo->signatureInfo.signature, uECC_secp256r1()))
+    if (!uECC_verify(authenticatorKey, digest, TC_SHA256_DIGEST_SIZE, imageInfo->signatureInfo.signature, uECC_secp256r1()))
     {
         bootLog("ERROR: Image %.64s has invalid signature", imageInfo->imageName);
         return BOOT_ERROR_INVALID_SIGNATURE;
@@ -479,9 +505,9 @@ enum BootError appImage_verifySignature(const struct AppImageHeader *imageInfo)
 
 enum BootError appImage_verify(const struct AppImageStore *store, const struct BootInfo *bootInfo)
 {
-    if (!store->isValid)
+    if (!appImage_hasImage(store))
     {
-        bootLog("ERROR: Store is marked not valid");
+        bootLog("ERROR: Store is invalid or does not contain an image");
         return BOOT_ERROR_APP_IMAGE_NOT_VALID;
     }
 
@@ -511,7 +537,7 @@ enum BootError appImage_verify(const struct AppImageStore *store, const struct B
         return sigVer;
     }
 
-    struct SignatureMessage messageOut;
+    struct AppImageSignatureMessage messageOut;
     char messageBuff[ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE];
 
     res = appImage_getSignatureMessage(&header, &messageOut, messageBuff);
@@ -549,13 +575,31 @@ enum BootError appImage_verify(const struct AppImageStore *store, const struct B
         return BOOT_ERROR_INVALID_SIZE;
     }
 
+    if (header.encryption.encryptedSize > store->maxSize)
+    {
+        bootLog("ERROR: Image data (%d bytes) is too large to fit in a storage of max %d bytes", header.encryption.encryptedSize, store->maxSize);
+        return BOOT_ERROR_INVALID_SIZE;
+    }
+
     if (header.headerSize + header.encryption.encryptedSize > store->maxSize)
     {
         bootLog("ERROR: Image (%d bytes) is too large to fit in a storage of max %d bytes", header.headerSize + header.encryption.encryptedSize, store->maxSize);
         return BOOT_ERROR_INVALID_SIZE;
     }
 
-    if ((messageOut.size > header.encryption.encryptedSize) && header.encryption.encryptedSize > 0)
+    if (header.encryption.encryptedSize == 0)
+    {
+        bootLog("ERROR: Image %.64s has invalid encrypted data size of %d; expected none-zero value;", header.imageName, messageOut.size, header.encryption.encryptedSize);
+        return BOOT_ERROR_INVALID_SIZE;
+    }
+
+    if (header.encryption.encryptedSize % TC_AES_BLOCK_SIZE != 0)
+    {
+        bootLog("ERROR: Image %.64s has invalid encrypted data size of %d; expected multiple of %d;", header.imageName, messageOut.size, TC_AES_BLOCK_SIZE);
+        return BOOT_ERROR_INVALID_SIZE;
+    }
+
+    if (messageOut.size > header.encryption.encryptedSize)
     {
         bootLog("ERROR: Image %.64s has invalid size of %d; expected no more than encrypted size (%d)", header.imageName, messageOut.size, header.encryption.encryptedSize);
         return BOOT_ERROR_INVALID_SIZE;
@@ -578,9 +622,9 @@ enum BootError appImage_verify(const struct AppImageStore *store, const struct B
 
 static int logStartIndex = 0;
 static int logIndex;
-static const struct FlashDevice *logFlash;
+static const struct BootFlashDevice *logFlash;
 
-enum BootError bootLogInit(const struct FlashDevice *flash, uint32_t address)
+enum BootError bootLogInit(const struct BootFlashDevice *flash, uint32_t address)
 {
     logFlash = flash;
     logIndex = address;
@@ -676,9 +720,9 @@ enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct A
         return res;
     }
 
-    if (header.encryption.encryptedSize > toStore->maxSize)
+    if (header.encryption.encryptedSize > toStore->maxSize || header.encryption.encryptedSize + header.headerSize > toStore->maxSize || header.headerSize > toStore->maxSize)
     {
-        bootLog("ERROR: Image %.64s is too large to fit in storage", header.imageName);
+        bootLog("ERROR: Image %.64s is too large to fit in target storage", header.imageName);
         return BOOT_ERROR_INVALID_SIZE;
     }
 
@@ -693,12 +737,13 @@ enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct A
 
         if (res < 0)
         {
+            memset(&secret, 0x00, sizeof(secret));
             bootLog("ERROR: Failed to get encryption key for image %.64s", header.imageName);
             return res;
         }
     }
 
-    appImage_setValid(toStore, false);
+    appImage_setHasImage(toStore, false);
 
     // update imageInfo
     // memcpy(&toStore->imageInfo, &fromStore->imageInfo, sizeof(struct AppImageHeader));
@@ -716,7 +761,10 @@ enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct A
         return res;
     }
 
-    appImage_setValid(toStore, fromStore->isValid);
+    appImage_setHasImage(toStore, appImage_hasImage(fromStore));
+
+    if (NULL != bootInfoBuff)
+        bootInfo_save(ROCKETZ_INFO_ADDR, bootInfoBuff);
 
     return 0;
 }
@@ -725,7 +773,7 @@ int getEncryptionKey(const struct AppImageHeader *header, struct Secret *secretO
 {
     uint8_t prv[32];
 
-    struct FlashDevice *internalFlash = bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH);
+    struct BootFlashDevice *internalFlash = bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH);
 
     int res = internalFlash->read(ROCKETZ_KEY_ADDR, prv, sizeof(prv));
 
@@ -754,7 +802,7 @@ int getEncryptionKey(const struct AppImageHeader *header, struct Secret *secretO
 
         bootLog("ERROR: Failed to derive encryption key");
 
-        return -1;
+        return BOOT_ERROR_UNKNOWN;
     }
 
     struct tc_sha256_state_struct digestSha;
@@ -769,8 +817,8 @@ int getEncryptionKey(const struct AppImageHeader *header, struct Secret *secretO
 
 int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppImageStore *toStore, const struct Secret *secret)
 {
-    struct FlashDevice *fromDevice = bootInfo_getFlashDevice(fromStore->storage);
-    struct FlashDevice *toDevice = bootInfo_getFlashDevice(toStore->storage);
+    struct BootFlashDevice *fromDevice = bootInfo_getFlashDevice(fromStore->storage);
+    struct BootFlashDevice *toDevice = bootInfo_getFlashDevice(toStore->storage);
 
     // read image header
     struct AppImageHeader fromHeader;
@@ -783,27 +831,15 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
         return res;
     }
 
-    if (fromHeader.headerSize > toStore->maxSize)
-    {
-        bootLog("ERROR: Image header is too large to fit in storage");
-        return BOOT_ERROR_INVALID_SIZE;
-    }
-
-    if (fromHeader.headerSize + fromHeader.encryption.encryptedSize > toStore->maxSize)
-    {
-        bootLog("ERROR: Image is too large to fit in destination storage");
-        return BOOT_ERROR_INVALID_SIZE;
-    }
-
     // read to header
     struct AppImageHeader toHeader;
 
     res = appImage_readHeader(&toHeader, toStore);
 
-    if (res < 0 && BOOT_ERROR_INVALID_HEADER_VERSION != res)
+    if (res < 0)
     {
-        bootLog("ERROR: Failed to read image header. Error %d.", res);
-        return res;
+        // zero all sizes in toHeader, since we couldn't read it
+        memset(&toHeader, 0x00, sizeof(toHeader));
     }
 
     size_t eraseSize = MAX(
@@ -812,7 +848,7 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
 
     eraseSize = MIN(eraseSize, ROCKETZ_MAX_APPIMAGE_SIZE);
 
-    bootLog("WARNING: Erasing %d bytes from destination storage", eraseSize);
+    bootLog("WARNING: Erasing (at least) %d bytes from destination storage", eraseSize);
 
     // Erase image area
     res = toDevice->erase(toStore->startAddr, eraseSize);
@@ -825,19 +861,6 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
 
     bool toAppStore = toStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && toStore->startAddr == ROCKETZ_APP_ADDR;
     bool fromAppStore = fromStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && fromStore->startAddr == ROCKETZ_APP_ADDR;
-
-    struct SignatureMessage messageOut;
-    char messageBuff[ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE];
-
-    if (NULL != secret && (toAppStore || fromAppStore))
-    {
-        int res = appImage_getSignatureMessage((toAppStore ? &fromHeader : &toHeader), &messageOut, messageBuff);
-
-        if (res < 0)
-        {
-            return res;
-        }
-    }
 
     // one buffer for cipher, decipher including iv
 
@@ -886,7 +909,7 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
             if (res != 1)
             {
                 bootLog("ERROR: Failed to decrypt image data. Error %d.", res);
-                return -1;
+                return BOOT_ERROR_UNKNOWN;
             }
 
             res = toDevice->write(toStore->startAddr + i, decipher, sizeAct);
@@ -922,7 +945,7 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
             if (res != 1)
             {
                 bootLog("ERROR: Failed to encrypt image data. Error %d.", res);
-                return -1;
+                return BOOT_ERROR_UNKNOWN;
             }
 
             res = toDevice->write(toStore->startAddr + i, cipher, sizeAct);
@@ -971,7 +994,7 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
     bool isLoadedApp = store->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && store->startAddr == ROCKETZ_APP_ADDR;
 
     // get signature message
-    struct SignatureMessage messageOut;
+    struct AppImageSignatureMessage messageOut;
 
     // read image header
     struct AppImageHeader header;
@@ -987,6 +1010,12 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
     if (header.headerSize > store->maxSize)
     {
         bootLog("ERROR: Image header (%d bytes) is too large to fit in a storage of max %d bytes", header.headerSize, store->maxSize);
+        return BOOT_ERROR_INVALID_SIZE;
+    }
+
+    if (header.encryption.encryptedSize > store->maxSize)
+    {
+        bootLog("ERROR: Image data (%d bytes) is too large to fit in a storage of max %d bytes", header.encryption.encryptedSize, store->maxSize);
         return BOOT_ERROR_INVALID_SIZE;
     }
 
@@ -1036,7 +1065,7 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
         }
     }
 
-    struct FlashDevice *device = bootInfo_getFlashDevice(store->storage);
+    struct BootFlashDevice *device = bootInfo_getFlashDevice(store->storage);
 
     uint8_t *decipher, *cipher, *_iv;
 
@@ -1069,7 +1098,7 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
             {
                 memset(&secret, 0, sizeof(secret));
                 bootLog("ERROR: Failed to decrypt image data. Error %d.", res);
-                return -1;
+                return BOOT_ERROR_UNKNOWN;
             }
         }
 

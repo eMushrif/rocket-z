@@ -64,7 +64,7 @@ asn1_tree *findObject(asn1_tree *tree, int objectCount, uint8_t tag, size_t mini
 int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *len)
 {
     if (NULL == pem || NULL == data)
-        return -1;
+        return -EINVAL;
 
     int pem_len = strlen(pem);
 
@@ -83,13 +83,13 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
     {
         if (!find_pem_base64(pem, pem_len, &start, &end))
         {
-            return -1;
+            return -EINVAL;
         }
     }
 
     if (start >= end)
     {
-        return -1;
+        return -EINVAL;
     }
 
     uint8_t der[1024];
@@ -97,7 +97,7 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
 
     if (base64_decode(der, sizeof(der), &der_len, pem + start, end - start) != 0)
     {
-        return -1;
+        return -EINVAL;
     }
 
     // parse ASN.1 DER
@@ -114,22 +114,22 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
     if (asn1_object_count <= 0)
     {
         // failed to read object count or empty object
-        return -1;
+        return -EINVAL;
     }
-    
+
     k_heap_init(&pem_heap, pem_heap.heap.init_mem, pem_heap.heap.init_bytes);
     asn1_tree *asn1_objects = (asn1_tree *)(k_heap_alloc(&pem_heap, sizeof(asn1_tree) * asn1_object_count, K_NO_WAIT));
     if (asn1_objects == NULL)
     {
         // failed to allocate
-        return -1;
+        return -2000;
     }
 
     if (der_decode(der, der_len, asn1_objects, asn1_objects + 1, asn1_object_count) < 0)
     {
         // failed to decode
         k_heap_free(&pem_heap, asn1_objects);
-        return -1;
+        return -2000;
     }
 
     // find the object we're looking for
@@ -147,13 +147,13 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
         if (NULL == object)
         {
             k_heap_free(&pem_heap, asn1_objects);
-            return -1;
+            return -EINVAL;
         }
 
         if (object->length < pemExpectedSize(type))
         {
             k_heap_free(&pem_heap, asn1_objects);
-            return -1;
+            return -EINVAL;
         }
 
         // copy object data without prefixes
@@ -168,13 +168,13 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
         if (NULL == object)
         {
             k_heap_free(&pem_heap, asn1_objects);
-            return -1;
+            return -EINVAL;
         }
 
         if (object->length < pemExpectedSize(type))
         {
             k_heap_free(&pem_heap, asn1_objects);
-            return -1;
+            return -EINVAL;
         }
 
         // copy object data without prefixes
@@ -189,13 +189,13 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
         if (NULL == certObject)
         {
             k_heap_free(&pem_heap, asn1_objects);
-            return -1;
+            return -EINVAL;
         }
 
         if (certObject->length < 32)
         {
             k_heap_free(&pem_heap, asn1_objects);
-            return -1;
+            return -EINVAL;
         }
 
         asn1_tree *algoObject = findObject(certObject + 1, asn1_object_count - (certObject - asn1_objects) - 1, 0x02, 32, 32);
@@ -203,13 +203,13 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
         if (NULL == algoObject)
         {
             k_heap_free(&pem_heap, asn1_objects);
-            return -1;
+            return -EINVAL;
         }
 
         if (algoObject->length < 32)
         {
             k_heap_free(&pem_heap, asn1_objects);
-            return -1;
+            return -EINVAL;
         }
 
         memcpy(data, certObject->data + (certObject->length - 32), 32);

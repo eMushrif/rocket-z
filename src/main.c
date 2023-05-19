@@ -21,12 +21,12 @@ int zephyrFlashRead(size_t address, void *data, size_t size)
 {
 	if (address + size > ROCKETZ_INTERNAL_FLASH_SIZE)
 	{
-		return -EINVAL;
+		return BOOT_ERROR_INVALID_ADDRESS;
 	}
 
 	if (fprotect_is_protected(address) & 2)
 	{
-		return -EPERM;
+		return BOOT_ERROR_MEMORY_LOCKED;
 	}
 
 	int res = flash_read(internalFlashDeviceId, address, data, size);
@@ -37,12 +37,12 @@ int zephyrFlashErase(size_t address, size_t size)
 {
 	if (address + size > ROCKETZ_INTERNAL_FLASH_SIZE)
 	{
-		return -EINVAL;
+		return BOOT_ERROR_INVALID_ADDRESS;
 	}
 
 	if (fprotect_is_protected(address) & 1)
 	{
-		return -EPERM;
+		return BOOT_ERROR_MEMORY_LOCKED;
 	}
 
 	// allign the erase region with the ROCKETZ_FLASH_BLOCK_SIZE
@@ -54,12 +54,12 @@ int zephyrFlashWrite(size_t address, const void *data, size_t size)
 {
 	if (address + size > ROCKETZ_INTERNAL_FLASH_SIZE)
 	{
-		return -EINVAL;
+		return BOOT_ERROR_INVALID_ADDRESS;
 	}
 
 	if (fprotect_is_protected(address) & 1)
 	{
-		return -EPERM;
+		return BOOT_ERROR_MEMORY_LOCKED;
 	}
 
 	// data must be aligned in 4 bytes
@@ -68,11 +68,11 @@ int zephyrFlashWrite(size_t address, const void *data, size_t size)
 	return res >= 0 ? actSize : res;
 }
 
-int zephyrFlashLock(size_t address, size_t size, enum FlashLockType lockType)
+int zephyrFlashLock(size_t address, size_t size, enum BootFlashLockType lockType)
 {
 	if (address + size > ROCKETZ_INTERNAL_FLASH_SIZE)
 	{
-		return -EINVAL;
+		return BOOT_ERROR_MEMORY_LOCKED;
 	}
 
 	// round size up to flash block size
@@ -80,14 +80,14 @@ int zephyrFlashLock(size_t address, size_t size, enum FlashLockType lockType)
 	return lockType == FLASH_LOCK_WRITE ? fprotect_area(address, size) : fprotect_area_no_access(address, size);
 }
 
-struct FlashDevice flashDevice_internalFlash = {
+struct BootFlashDevice flashDevice_internalFlash = {
 	.read = zephyrFlashRead,
 	.erase = zephyrFlashErase,
 	.write = zephyrFlashWrite,
 	.lock = zephyrFlashLock,
 };
 
-struct FlashDevice *bootInfo_getFlashDevice(enum AppImageStorage storage)
+struct BootFlashDevice *bootInfo_getFlashDevice(enum AppImageStorage storage)
 {
 	switch (storage)
 	{

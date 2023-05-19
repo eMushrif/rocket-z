@@ -16,7 +16,7 @@
 #endif
 
 #ifndef ROCKETZ_APP_ADDR
-#define ROCKETZ_APP_ADDR 0x10000
+#define ROCKETZ_APP_ADDR 0x13000
 #endif
 
 #ifndef ROCKETZ_INTERNAL_FLASH_SIZE
