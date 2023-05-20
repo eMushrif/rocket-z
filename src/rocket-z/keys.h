@@ -22,7 +22,9 @@ static const struct BootAuthenticator bootAuthenticators[BOOT_AUTHENTICATOR_COUN
          "-----END PUBLIC KEY-----"},
 };
 
-static const char *rocketZPub =
+// rocketPubKey CRC32-IEEE is 0x2cc8a1b9
+
+static const char *rocketPubKey =
     "-----BEGIN PUBLIC KEY-----"
     "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE70rS77CvKXulXM1Cx0CqbnMcuaA5"
     "1pNE2qWsmlcJGNOjSScD1C+cpzd6JVTd63LnV1cmCabNCmjCpPM/A9+xCA=="

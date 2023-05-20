@@ -18,42 +18,6 @@ extern "C"
 #include <zephyr/kernel.h>
 #include "config.h"
 
-#ifndef ROCKETZ_FLASH_BLOCK_SIZE
-#define ROCKETZ_FLASH_BLOCK_SIZE 0x1000
-#endif
-
-#ifndef ROCKETZ_FLASH_WRITE_ALIGNMENT
-#define ROCKETZ_FLASH_WRITE_ALIGNMENT 4
-#endif
-
-#ifndef ROCKETZ_APP_ADDR
-#define ROCKETZ_APP_ADDR 0x13000
-#endif
-
-#ifndef ROCKETZ_INTERNAL_FLASH_SIZE
-#define ROCKETZ_INTERNAL_FLASH_SIZE 0x100000
-#endif
-
-#ifndef ROCKETZ_MAX_APPIMAGE_SIZE
-#define ROCKETZ_MAX_APPIMAGE_SIZE (ROCKETZ_INTERNAL_FLASH_SIZE - ROCKETZ_APP_ADDR) // 1MB - Bootloder size
-#endif
-
-#ifndef ROCKETZ_INFO_ADDR
-#define ROCKETZ_INFO_ADDR (ROCKETZ_APP_ADDR - ROCKETZ_FLASH_BLOCK_SIZE)
-#endif
-
-#ifndef ROCKETZ_LOG_ADDR
-#define ROCKETZ_LOG_ADDR (ROCKETZ_APP_ADDR - (2 * ROCKETZ_FLASH_BLOCK_SIZE))
-#endif
-
-#ifndef ROCKETZ_KEY_ADDR
-#define ROCKETZ_KEY_ADDR (ROCKETZ_APP_ADDR - (3 * ROCKETZ_FLASH_BLOCK_SIZE))
-#endif
-
-#ifndef ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE
-#define ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE 512
-#endif
-
     enum BootError
     {
         BOOT_ERROR_SUCCESS = 0,
@@ -137,7 +101,8 @@ extern "C"
         {
             int32_t method;
             uint32_t encryptedSize;
-            uint8_t pubKey[64]; //< Public key used for encryption. Base 64 encoded.
+            uint32_t pubKeyCrc32; //< Optional CRC32-IEEE of Rocket bootloader public key. Used to verify that the bootloader is compatible with the image.
+            uint8_t pubKey[64];   //< Author's public key used for encryption. Base 64 encoded.
         } encryption;
 
         // signature info
@@ -165,7 +130,7 @@ extern "C"
     struct AppImageSignatureMessage
     {
         char *authenticator;
-        char *userId;
+        char *authorId;
         uint32_t time;
         char *variantPattern;
         uint32_t size;
@@ -388,10 +353,12 @@ extern "C"
      * \brief Set encryption information for an image
      * \param header Pointer to the image header structure
      * \param pubKey Public key used for encryption. PEM-formatted. With or without header and footer.
-     * \param encryptedSize Size of the encrypted image
      * \param method Encryption method
+     * \param encryptedSize Size of the encrypted image
+     * \param pubKeyCrc32 Optional CRC32-IEEE of Rocket bootloader public key.
+     * \return 0 on success, BootError on error
      */
-    enum BootError appImage_setEncryption(struct AppImageHeader *header, const char *pubKey, enum AppImageEncryptionMethod method, size_t encryptedSize);
+    enum BootError appImage_setEncryption(struct AppImageHeader *header, const char *pubKey, enum AppImageEncryptionMethod method, size_t encryptedSize, uint32_t pubKeyCrc32);
 
     /**
      * Set signature information for an image
@@ -408,7 +375,7 @@ extern "C"
      * \param header Pointer to the image header structure
      * \param messageOut Pointer to the output of signature message data.
      * \param messageBuff A buffer where message strings are stored. Must be at least of size ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE
-     * \return 0 if verified, BootError otherwise
+     * \return 0 on success, BootError otherwise
      */
     enum BootError appImage_getSignatureMessage(const struct AppImageHeader *header, struct AppImageSignatureMessage *messageOut, char *messageBuff);
 

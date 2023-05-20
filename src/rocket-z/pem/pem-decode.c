@@ -184,7 +184,19 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
     {
         identifierFound = true; // no identifier object for signatures
 
-        asn1_tree *certObject = findObject(asn1_objects, asn1_object_count, ASN1_TYPE_INTEGER, 32, 32);
+        // signature message have 2 objects of interest
+        // sometimes they can be of size 32 or 33, or one can be 32 and the other 33
+        // but they come in the same order always (hopefully)
+        // the data we need from each object is always 32 bytes
+
+        asn1_tree *certObject;
+        asn1_tree *algoObject;
+
+        int maxCertSearch = asn1_object_count;
+
+    sign_search:
+
+        certObject = findObject(asn1_objects, maxCertSearch, ASN1_TYPE_INTEGER, 32, 32);
 
         if (NULL == certObject)
         {
@@ -198,10 +210,23 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
             return -EINVAL;
         }
 
-        asn1_tree *algoObject = findObject(certObject + 1, asn1_object_count - (certObject - asn1_objects) - 1, 0x02, 32, 32);
+        // algoObject comes after certObject
+
+        algoObject = findObject(certObject + 1, asn1_object_count - (certObject - asn1_objects) - 1, ASN1_TYPE_INTEGER, 32, 32);
 
         if (NULL == algoObject)
         {
+            // sometimes certObject takes algoObject data on the first try
+            // and no objects after it fit for algoObject
+            // so, limit the search of certObject to the first few objects
+            // and retry
+
+            if (certObject > asn1_objects)
+            {
+                maxCertSearch = certObject - asn1_objects;
+                goto sign_search;
+            }
+
             k_heap_free(&pem_heap, asn1_objects);
             return -EINVAL;
         }

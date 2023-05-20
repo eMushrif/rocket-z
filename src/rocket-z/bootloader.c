@@ -1,16 +1,17 @@
 #include "bootloader.h"
+#include "config.h"
 #include <string.h>
 #include <zephyr/sys/base64.h>
 
 static struct BootFlashDevice *internalFlash;
 struct BootInfoBuffer bootInfoBuffer;
 
-void bootloader_run(struct BootFlashDevice *_internalFlash, struct BootFlashDevice *_imageFlash)
+void bootloader_run()
 {
-    internalFlash = _internalFlash;
+    internalFlash = bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH);
 
     // lock bootloadaer memory
-    int res = internalFlash->lock(0x0, ROCKETZ_KEY_ADDR, FLASH_LOCK_WRITE);
+    int res = internalFlash->lock(0x0, ROCKETZ_BOOTLOADER_SIZE_MAX, FLASH_LOCK_WRITE);
 
     if (res < 0)
     {
@@ -18,7 +19,7 @@ void bootloader_run(struct BootFlashDevice *_internalFlash, struct BootFlashDevi
         return;
     }
 
-    bootLogInit(_internalFlash, ROCKETZ_LOG_ADDR);
+    bootLogInit(internalFlash, ROCKETZ_LOG_ADDR);
 
     bootLog("INFO: Bootloader started");
 
@@ -37,9 +38,10 @@ void bootloader_run(struct BootFlashDevice *_internalFlash, struct BootFlashDevi
 
     struct AppImageHeader h;
     appImage_setName(&h, "image0");
-    appImage_setEncryption(&h, "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElHbYKCCRqq7Tl7kJrWf+8feaydJoH/SInipkPHoMiljLbo4X8u8oEaDZqmWpXAqN6bhvJYSUL/RpLLKS2kDD5A==", ENCRYPTION_EC_P256_AES_128_CBC_SHA_256, 12032);
-    appImage_setSignature(&h, "{\"authenticator\":\"Zodiac\",\"userId\":\"584\",\"time\":1680531112,\"variantPattern\":\"my-product-*:master\",\"size\":12025,\"sha256\":\"BYZX3lDea4TvtBbf8cQQQvrUIEyHoeWA9K9kNuq0o5U=\"}", "MEYCIQCU8GiKvhIQxU/dEMC6wYo2QudistoHe0R2pIDiPMQ+BgIhAJ6+5YPWtxSfrn1ICKfmSzb7VfJVHFBcuIqfrA7jauWF", SIGNATURE_VERSION_0_0);
+    appImage_setEncryption(&h, "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElHbYKCCRqq7Tl7kJrWf+8feaydJoH/SInipkPHoMiljLbo4X8u8oEaDZqmWpXAqN6bhvJYSUL/RpLLKS2kDD5A==", ENCRYPTION_EC_P256_AES_128_CBC_SHA_256, 12032, 0x2cc8a1b9);
+    appImage_setSignature(&h, "{\"authenticator\":\"Zodiac\",\"authorId\":\"584\",\"time\":1680531112,\"variantPattern\":\"my-product-*:master\",\"size\":12025,\"sha256\":\"BYZX3lDea4TvtBbf8cQQQvrUIEyHoeWA9K9kNuq0o5U=\"}", "MEUCIQCmDt0sQBRxgp1GYIDBiviU0SGvRR1KGWr7rGrE3k4R5QIgLav/K24WRpIIA8woDdtmObpk4ahttksmk+zXqumbxZs=", SIGNATURE_VERSION_0_0);
     appImage_setLoadRequest(&bootInfo->stores[0]);
+    appImage_setHeader(&h, IMAGE_HEADER_VERSION_0_0, 800);
     appImage_setHasImage(&bootInfo->stores[0], true);
     bootInfo_setCurrentVariant(bootInfo, "my-product-dev:master");
 #endif
@@ -81,6 +83,7 @@ void bootloader_run(struct BootFlashDevice *_internalFlash, struct BootFlashDevi
                 continue;
             }
 
+#if 1
             // verify checksum of new image
             verified = appImage_verifyChecksum(&bootInfo->stores[i]);
 
@@ -90,7 +93,7 @@ void bootloader_run(struct BootFlashDevice *_internalFlash, struct BootFlashDevi
                 appImage_setHasImage(&bootInfo->stores[i], false);
                 continue;
             }
-
+#endif
             bootLog("INFO: Loading image %.64s", header.imageName);
 
             res = loadImage(&bootInfo->stores[i], bootInfo);
@@ -100,6 +103,8 @@ void bootloader_run(struct BootFlashDevice *_internalFlash, struct BootFlashDevi
                 bootLog("ERROR: Failed to load image %d:%.64s", i, header.imageName);
                 continue;
             }
+
+            appImage_setHasImage(&bootInfo->stores[i], true);
 
             bootInfo_failClear(bootInfo);
 
@@ -238,6 +243,10 @@ void bootloader_run(struct BootFlashDevice *_internalFlash, struct BootFlashDevi
     //((void (*)(void))ROCKETZ_APP_ADDR)();
 }
 
+// select a rollback image
+// if appStore hasImage is true, it will be set to false first without rolling back
+// if appStore hasImage is false, it will try to find a rollback image and make a load request
+// should restart the system after calling this function
 void rollback()
 {
     struct BootInfo *bootInfo = &bootInfoBuffer.bootInfo;

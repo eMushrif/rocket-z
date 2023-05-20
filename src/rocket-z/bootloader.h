@@ -13,7 +13,7 @@ extern "C"
 
 #include "controller.h"
 
-    void bootloader_run(struct BootFlashDevice *internalFlash, struct BootFlashDevice *imageFlash);
+    void bootloader_run();
 
 #ifdef __cplusplus
 }

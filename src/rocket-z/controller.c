@@ -10,6 +10,7 @@
 #include <tinycrypt/ecc_dh.h>
 #include <tinycrypt/cbc_mode.h>
 #include "pem/pem-decode.h"
+#include <zephyr/sys/crc.h>
 
 int unknownFlashRead(size_t address, void *data, size_t size)
 {
@@ -254,7 +255,7 @@ enum BootError appImage_setSignature(struct AppImageHeader *header, const char *
     return BOOT_ERROR_SUCCESS;
 }
 
-enum BootError appImage_setEncryption(struct AppImageHeader *header, const char *pubKey, enum AppImageEncryptionMethod method, size_t encryptedSize)
+enum BootError appImage_setEncryption(struct AppImageHeader *header, const char *pubKey, enum AppImageEncryptionMethod method, size_t encryptedSize, uint32_t pubKeyCrc32)
 {
     int len = 0;
     int res = pemExtract(pubKey, EC_P256_PUBLIC_KEY, header->encryption.pubKey, &len);
@@ -272,6 +273,7 @@ enum BootError appImage_setEncryption(struct AppImageHeader *header, const char 
 
     header->encryption.method = method;
     header->encryption.encryptedSize = encryptedSize;
+    header->encryption.pubKeyCrc32 = pubKeyCrc32;
 
     return BOOT_ERROR_SUCCESS;
 }
@@ -398,7 +400,7 @@ bool isMatch(const char *str, const char *pattern)
 
 struct json_obj_descr descr[DESCR_ARRAY_SIZE] = {
     JSON_OBJ_DESCR_PRIM(struct AppImageSignatureMessage, authenticator, JSON_TOK_STRING),
-    JSON_OBJ_DESCR_PRIM(struct AppImageSignatureMessage, userId, JSON_TOK_STRING),
+    JSON_OBJ_DESCR_PRIM(struct AppImageSignatureMessage, authorId, JSON_TOK_STRING),
     JSON_OBJ_DESCR_PRIM(struct AppImageSignatureMessage, time, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(struct AppImageSignatureMessage, variantPattern, JSON_TOK_STRING),
     JSON_OBJ_DESCR_PRIM(struct AppImageSignatureMessage, size, JSON_TOK_NUMBER),
@@ -1117,7 +1119,24 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
     // compare sha256
     if (memcmp(sha256, sha256Final, TC_SHA256_DIGEST_SIZE) != 0)
     {
+        // check if the Rocket public key is the same as the one used to encrypt the image
+        uint8_t pub[64];
+
+        int len = 0;
+        pemExtract(rocketPubKey, EC_P256_PUBLIC_KEY, pub, &len);
+
+        if (len > 0)
+        {
+            // apply check
+            uint32_t res = crc32_ieee(pub, sizeof(pub));
+            if (res != header.encryption.pubKeyCrc32)
+            {
+                bootLog("WARNING: Encryption key was possibly generated with a public key other than the one assigned to this bootloader. Expected CRC32 0x%08x but got 0x%08x", res, header.encryption.pubKeyCrc32);
+            }
+        }
+
         bootLog("ERROR: Image checksum failed.");
+
         return BOOT_ERROR_FAILED_CHECKSUM;
     }
 
