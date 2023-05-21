@@ -37,13 +37,17 @@ void bootloader_run()
 #if 1 // For testing
     appImage_setStore(&bootInfo->stores[0], BOOT_IMG_STORAGE_INTERNAL_FLASH, 0x20000, 0x20000);
 
+    appImage_setStore(&bootInfo->stores[2], BOOT_IMG_STORAGE_INTERNAL_FLASH, 0x40000, 0x20000);
+
     struct AppImageHeader h;
-    appImage_setName(&h, "image1");
-    appImage_setEncryption(&h, "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElHbYKCCRqq7Tl7kJrWf+8feaydJoH/SInipkPHoMiljLbo4X8u8oEaDZqmWpXAqN6bhvJYSUL/RpLLKS2kDD5A==", ENCRYPTION_EC_P256_AES_128_CBC_SHA_256, 12032, 0x2cc8a1b9);
-    appImage_setSignature(&h, "{\"authenticator\":\"Zodiac\",\"authorId\":\"584\",\"time\":1680531112,\"variantPattern\":\"my-product-*:master\",\"size\":12025,\"sha256\":\"BYZX3lDea4TvtBbf8cQQQvrUIEyHoeWA9K9kNuq0o5U=\"}", "MEUCIQCmDt0sQBRxgp1GYIDBiviU0SGvRR1KGWr7rGrE3k4R5QIgLav/K24WRpIIA8woDdtmObpk4ahttksmk+zXqumbxZs=", SIGNATURE_VERSION_0_0);
-    appImage_setLoadRequest(&bootInfo->stores[1]);
+    appImage_setName(&h, "image11111");
+    appImage_setEncryption(&h, "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEQUpL0p7jyVL36SH/ZRdoWYbw6FCSlKAIQ+0uyQiFTbi3arpBe5yrv1RLzc+t1ioSGnfYrSN4STkzFcgCQjv37Q==", ENCRYPTION_EC_P256_AES_128_CBC_SHA_256, 37456, 0x2cc8a1b9);
+    appImage_setSignature(&h, "{\"authenticator\":\"Zodiac\",\"authorId\":\"9090\",\"time\":1680531112,\"variantPattern\":\"my-pro\",\"size\":37448,\"sha256\":\"rCQIM0QV7aedK1JUp6T4u4Der6hHUkgwwi/artFoemI=\"}", "MEUCIQDnVlvU8km2YR014pZL+ABq36jaiuqkRqSxEbAdH0F2eQIgEz9fFW7IPMQr5titiU7yFwIwPoM9zbwAo+90JvLqS4Q=", SIGNATURE_VERSION_0_0);
     appImage_setHeader(&h, IMAGE_HEADER_VERSION_0_0, 800);
-    appImage_setHasImage(&bootInfo->stores[0], true);
+
+    appImage_setLoadRequest(&bootInfo->stores[2]);
+
+    appImage_setHasImage(&bootInfo->stores[2], true);
     bootInfo_setCurrentVariant(bootInfo, "my-product-dev:master");
 #endif
 
