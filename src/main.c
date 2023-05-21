@@ -118,13 +118,8 @@ void k_sys_fatal_error_handler(unsigned int reason, const z_arch_esf_t *esf)
 
 #include <nrfx_gpiote.h>
 
-void main(void)
+void bootloader_restart()
 {
-
-	internalFlashDeviceId = device_get_binding(DT_NODE_FULL_NAME(DT_CHOSEN(zephyr_flash_controller)));
-
-	bootloader_run();
-
 	nrfx_gpiote_out_config_t out_config = {
 		.action = NRF_GPIOTE_POLARITY_LOTOHI,
 		.init_state = 1,
@@ -132,11 +127,39 @@ void main(void)
 	};
 	nrfx_gpiote_out_init(13, &out_config);
 
-	// should not reach here
 	while (true)
 	{
 		nrfx_gpiote_out_toggle(13);
 		k_msleep(500);
+	}
+}
+
+void bootloader_jump()
+{
+	nrfx_gpiote_out_config_t out_config = {
+		.action = NRF_GPIOTE_POLARITY_LOTOHI,
+		.init_state = 1,
+		.task_pin = false,
+	};
+	nrfx_gpiote_out_init(13, &out_config);
+
+	while (true)
+	{
+		nrfx_gpiote_out_toggle(13);
+		k_msleep(100);
+	}
+}
+
+void main(void)
+{
+
+	internalFlashDeviceId = device_get_binding(DT_NODE_FULL_NAME(DT_CHOSEN(zephyr_flash_controller)));
+
+	bootloader_run();
+
+	// should not reach here
+	while (true)
+	{
 	}
 }
 

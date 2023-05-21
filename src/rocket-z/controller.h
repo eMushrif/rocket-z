@@ -14,9 +14,8 @@ extern "C"
 #include "stdint.h"
 #include "stdbool.h"
 #include "stddef.h"
-#include <stdlib.h>
-#include <zephyr/kernel.h>
 #include "config.h"
+#include <errno.h>
 
     enum BootError
     {

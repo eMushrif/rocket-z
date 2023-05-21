@@ -2,6 +2,7 @@
 #include "config.h"
 #include <string.h>
 #include <zephyr/sys/base64.h>
+#include <zephyr/kernel.h>
 
 static struct BootFlashDevice *internalFlash;
 struct BootInfoBuffer bootInfoBuffer;
@@ -16,7 +17,7 @@ void bootloader_run()
     if (res < 0)
     {
         bootLog("ERROR: Failed to lock boot area.");
-        return;
+        bootloader_restart();
     }
 
     bootLogInit(internalFlash, ROCKETZ_LOG_ADDR);
@@ -30,17 +31,17 @@ void bootloader_run()
     if (bootInfo->version != BOOT_VERSION_0_0)
     {
         bootLog("ERROR: Boot info version not supported.");
-        return;
+        bootloader_restart();
     }
 
 #if 1 // For testing
     appImage_setStore(&bootInfo->stores[0], BOOT_IMG_STORAGE_INTERNAL_FLASH, 0x20000, 0x20000);
 
     struct AppImageHeader h;
-    appImage_setName(&h, "image0");
+    appImage_setName(&h, "image1");
     appImage_setEncryption(&h, "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElHbYKCCRqq7Tl7kJrWf+8feaydJoH/SInipkPHoMiljLbo4X8u8oEaDZqmWpXAqN6bhvJYSUL/RpLLKS2kDD5A==", ENCRYPTION_EC_P256_AES_128_CBC_SHA_256, 12032, 0x2cc8a1b9);
     appImage_setSignature(&h, "{\"authenticator\":\"Zodiac\",\"authorId\":\"584\",\"time\":1680531112,\"variantPattern\":\"my-product-*:master\",\"size\":12025,\"sha256\":\"BYZX3lDea4TvtBbf8cQQQvrUIEyHoeWA9K9kNuq0o5U=\"}", "MEUCIQCmDt0sQBRxgp1GYIDBiviU0SGvRR1KGWr7rGrE3k4R5QIgLav/K24WRpIIA8woDdtmObpk4ahttksmk+zXqumbxZs=", SIGNATURE_VERSION_0_0);
-    appImage_setLoadRequest(&bootInfo->stores[0]);
+    appImage_setLoadRequest(&bootInfo->stores[1]);
     appImage_setHeader(&h, IMAGE_HEADER_VERSION_0_0, 800);
     appImage_setHasImage(&bootInfo->stores[0], true);
     bootInfo_setCurrentVariant(bootInfo, "my-product-dev:master");
@@ -121,7 +122,6 @@ void bootloader_run()
         bootLog("ERROR: Failed to read image header of loaded image.");
         appImage_setHasImage(&bootInfo->appStore, false);
         rollback();
-        return;
     }
 
     res = internalFlash->lock(ROCKETZ_APP_ADDR, MIN(ROCKETZ_MAX_APPIMAGE_SIZE, header.encryption.encryptedSize), FLASH_LOCK_WRITE);
@@ -129,7 +129,7 @@ void bootloader_run()
     if (res < 0)
     {
         bootLog("WARNING: Failed to lock app area.");
-        return;
+        bootloader_restart();
     }
 
     res = internalFlash->lock(ROCKETZ_KEY_ADDR, 512, FLASH_LOCK_ALL);
@@ -137,7 +137,7 @@ void bootloader_run()
     if (res < 0)
     {
         bootLog("WARNING: Failed to lock secret area.");
-        return;
+        bootloader_restart();
     }
 
 #if 0 // For testing
@@ -200,7 +200,6 @@ void bootloader_run()
             bootLog("ERROR: Current image failed to clear fail flags many times (max %d). Rolling back", bootInfo->failCountMax);
             appImage_setHasImage(&bootInfo->appStore, false);
             rollback();
-            return;
         }
     }
 
@@ -211,7 +210,6 @@ void bootloader_run()
     {
         bootLog("ERROR: Failed to verify signature of loaded image");
         rollback();
-        return;
     }
 
     res = appImage_verifyChecksum(&bootInfo->appStore);
@@ -220,7 +218,6 @@ void bootloader_run()
     {
         bootLog("ERROR: Failed to verify checksum of loaded image");
         rollback();
-        return;
     }
 
 #if 0 // For testing
@@ -239,8 +236,8 @@ void bootloader_run()
 
     // jump to loaded image
     // copid from ncs\v2.3.0\bootloader\mcuboot\boot\zephyr\main.c
-    // irq_lock();
-    //((void (*)(void))ROCKETZ_APP_ADDR)();
+
+    bootloader_jump();
 }
 
 // select a rollback image
@@ -257,7 +254,7 @@ void rollback()
         bootLog("INFO: Same image will be tried again");
         appImage_setHasImage(&bootInfo->appStore, false);
         bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
-        return;
+        bootloader_restart();
     }
     else
     {
@@ -274,7 +271,7 @@ void rollback()
             bootInfo->rollbackImageIndex = -1;
             appImage_setLoadRequest(&bootInfo->stores[bootInfo->rollbackImageIndex]);
             bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
-            return;
+            bootloader_restart();
         }
         else
         {
@@ -292,12 +289,12 @@ void rollback()
 
                 if (!appImage_isCurrent(&header, bootInfo))
                 {
-
+                    bootLog("INFO: Found a different image to rollback to");
                     bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                     bootInfo->rollbackImageIndex = -1;
                     appImage_setLoadRequest(&bootInfo->stores[i]);
                     bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
-                    return;
+                    bootloader_restart();
                 }
             }
 
@@ -311,16 +308,40 @@ void rollback()
                 if (res < 0)
                     continue;
 
+                bootLog("INFO: Couldn't find a different image to rollback to. Will try to rollback to the same image.");
                 bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                 bootInfo->rollbackImageIndex = -1;
                 appImage_setLoadRequest(&bootInfo->stores[i]);
                 bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
-                return;
+                bootloader_restart();
+            }
+
+            // find any store and verify the image regalrdless of the value of hasImage
+            for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
+            {
+                int res = appImage_readHeader(&header, &bootInfo->stores[i]);
+                if (res < 0)
+                    continue;
+
+                appImage_setHasImage(&bootInfo->stores[i], true);
+
+                if (0 != appImage_verify(&bootInfo->stores[i], bootInfo))
+                {
+                    appImage_setHasImage(&bootInfo->stores[i], false);
+                    continue;
+                }
+
+                bootLog("INFO: No store has an image to rollback to. Will try any store even if marked as not hasImage.");
+                bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
+                bootInfo->rollbackImageIndex = -1;
+                appImage_setLoadRequest(&bootInfo->stores[i]);
+                bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+                bootloader_restart();
             }
 
             bootLog("ERROR: No valid image can be rolled back to.");
 
-            return;
+            bootloader_restart();
         }
     }
 }

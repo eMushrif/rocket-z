@@ -13,7 +13,20 @@ extern "C"
 
 #include "controller.h"
 
+    /**
+     * @brief Run the bootloader logic
+     */
     void bootloader_run();
+
+    /**
+     * @brief Must be implemented externally. Restart the system.
+     */
+    void bootloader_restart();
+
+    /**
+     * @brief Must be implemented externally. Jump to app.
+     */
+    void bootloader_jump();
 
 #ifdef __cplusplus
 }
