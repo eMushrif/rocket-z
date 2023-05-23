@@ -45,10 +45,13 @@ void bootloader_run()
     appImage_setSignature(&h, "{\"authenticator\":\"Zodiac\",\"authorId\":\"9090\",\"time\":1680531112,\"variantPattern\":\"my-pro\",\"size\":37448,\"sha256\":\"rCQIM0QV7aedK1JUp6T4u4Der6hHUkgwwi/artFoemI=\"}", "MEUCIQDnVlvU8km2YR014pZL+ABq36jaiuqkRqSxEbAdH0F2eQIgEz9fFW7IPMQr5titiU7yFwIwPoM9zbwAo+90JvLqS4Q=", SIGNATURE_VERSION_0_0);
     appImage_setHeader(&h, IMAGE_HEADER_VERSION_0_0, 800);
 
-    appImage_setLoadRequest(&bootInfo->stores[2]);
+    // appImage_setLoadRequest(&bootInfo->stores[2]);
 
+    appImage_setHasImage(&bootInfo->stores[0], true);
     appImage_setHasImage(&bootInfo->stores[2], true);
     bootInfo_setCurrentVariant(bootInfo, "my-product-dev:master");
+
+    bootInfo->failCountMax = 3;
 #endif
 
     struct AppImageHeader header;
@@ -201,7 +204,7 @@ void bootloader_run()
         bootInfo_failFlag(bootInfo);
         if (bootInfo_getFailCount(bootInfo) > bootInfo->failCountMax)
         {
-            bootLog("ERROR: Current image failed to clear fail flags many times (max %d). Rolling back", bootInfo->failCountMax);
+            bootLog("ERROR: Current image failed to clear fail flags many times (max %d). Rolling back.", bootInfo->failCountMax);
             appImage_setHasImage(&bootInfo->appStore, false);
             rollback();
         }
@@ -352,26 +355,30 @@ void rollback()
 
 int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo)
 {
-    bootInfo->rollbackImageIndex = -1;
-
     if (appImage_hasImage(&bootInfo->appStore))
     {
-        // Find current image and set rollback image
-        for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
-        {
-            // read header
-            struct AppImageHeader header;
-            int res = appImage_readHeader(&header, &bootInfo->stores[i]);
-            if (res < 0)
-            {
-                continue;
-            }
+        // read store header
+        struct AppImageHeader header;
+        int res = appImage_readHeader(&header, store);
 
-            if (appImage_hasImage(&bootInfo->stores[i]) && appImage_isCurrent(&header, bootInfo))
+        if (res >= 0 && !appImage_isCurrent(&header, bootInfo)) // if we're not updating with the same loaded image
+        {
+            // Find current image and set rollback image
+            for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
             {
-                bootLog("INFO: Image %d:%.64s is selected as backup", i, header.imageName);
-                bootInfo->rollbackImageIndex = i;
-                break;
+                // read header
+                int res = appImage_readHeader(&header, &bootInfo->stores[i]);
+                if (res < 0)
+                {
+                    continue;
+                }
+
+                if (appImage_hasImage(&bootInfo->stores[i]) && appImage_isCurrent(&header, bootInfo))
+                {
+                    bootLog("INFO: Image %d:%.64s is selected as backup", i, header.imageName);
+                    bootInfo->rollbackImageIndex = i;
+                    break;
+                }
             }
         }
     }

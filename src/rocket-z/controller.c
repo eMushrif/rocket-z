@@ -73,6 +73,8 @@ struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff)
         info->version = BOOT_VERSION_0_0;
     }
 
+    info->rollbackImageIndex = -1;
+
     // make sure appStore parameters are not changed
     appImage_setStore(&info->appStore, BOOT_IMG_STORAGE_INTERNAL_FLASH, ROCKETZ_APP_ADDR, ROCKETZ_MAX_APPIMAGE_SIZE);
 
@@ -1153,11 +1155,8 @@ uint32_t bootInfo_getFailCount(const struct BootInfo *info)
         {
             count++;
         }
-    }
 
-    for (int i = 0; i < sizeof(info->failClears) * 8; i++)
-    {
-        if ((~info->failFlags) & (1 << i))
+        if ((~info->failClears) & (1 << i))
         {
             countC++;
         }
@@ -1179,6 +1178,7 @@ void bootInfo_failFlag(struct BootInfo *info)
     {
         // all flags are set
         memset(&info->failFlags, 0xFF, sizeof(info->failFlags));
+        memset(&info->failClears, 0xFF, sizeof(info->failFlags));
 
         for (int i = 0; i < currentFailCount; i++)
         {
@@ -1189,7 +1189,7 @@ void bootInfo_failFlag(struct BootInfo *info)
     // find a set bit and clear it
     for (int i = 0; i < sizeof(info->failFlags) * 8; i++)
     {
-        if ((~info->failFlags) & (1 << i))
+        if (info->failFlags & (1 << i))
         {
             info->failFlags &= ~(1 << i);
             break;

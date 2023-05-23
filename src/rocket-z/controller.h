@@ -321,13 +321,13 @@ extern "C"
     uint32_t bootInfo_getFailCount(const struct BootInfo *info);
 
     /**
-     * \brief raise fail flag for the currently running image
+     * \brief Raise fail flag for the currently running image. occurs normally before the app runs.
      * \param info Pointer to the boot information structure
      */
     void bootInfo_failFlag(struct BootInfo *info);
 
     /**
-     * \brief clear fail flag for the currently running image
+     * \brief Clear fail flag for the currently running image. Must be called by the app to indicate that it has run successfully.
      * \param info Pointer to the boot information structure
      */
     void bootInfo_failClear(struct BootInfo *info);
