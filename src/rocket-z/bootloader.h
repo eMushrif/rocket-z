@@ -25,8 +25,9 @@ extern "C"
 
     /**
      * @brief Must be implemented externally. Jump to app.
+     * @param offset Offset to jump to
      */
-    void bootloader_jump();
+    void bootloader_jump(size_t offset);
 
 #ifdef __cplusplus
 }

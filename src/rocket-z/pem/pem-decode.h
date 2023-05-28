@@ -7,6 +7,8 @@
 #define __PEM_DECODE_H__
 
 #include <stddef.h>
+#include <stdint.h>
+#include <errno.h>
 
 enum DerObjectType
 {

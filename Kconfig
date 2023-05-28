@@ -1,0 +1,30 @@
+mainmenu "Rocketz configuration"
+
+comment "Rocketz configuration options"
+
+source "$(ZEPHYR_BASE)/Kconfig"
+
+config ROCKETZ
+    bool "Rocketz"
+    default y
+    help
+      Rocketz is a bootloader based on Zephyr framework.
+
+config CLEANUP_ARM_CORE
+	bool "Perform core cleanup before chain-load the application"
+	default y
+	help
+	  This option instructs MCUboot to perform a clean-up of a set of
+	  architecture core HW registers before junping to the application
+	  firmware. The clean-up sets these registers to their warm-reset
+	  values as specified by the architecture.
+
+	  This option is enabled by default to prevent possible problems when
+	  booting zephyr (or other) applications whereby e.g. a MPU stack guard
+	  may be initialised in RAM which is then used by the application
+	  start-up code which can cause a module fault and potentially make the
+	  module irrecoverable.
+
+config NRF_CLEANUP_PERIPHERAL
+	bool "Perform peripheral cleanup before chain-load the application"
+	default y

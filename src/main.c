@@ -12,6 +12,10 @@
 #include <zephyr/drivers/flash.h>
 #include <zephyr/fatal.h>
 #include <fprotect.h>
+#include <hal/nrf_clock.h>
+#include "rocket-z/config.h"
+
+#include "arm_cleanup.h"
 
 #include "rocket-z/bootloader.h"
 
@@ -134,26 +138,24 @@ void bootloader_restart()
 	}
 }
 
-void bootloader_jump()
+void nrf_cleanup()
 {
-	nrfx_gpiote_out_config_t out_config = {
-		.action = NRF_GPIOTE_POLARITY_LOTOHI,
-		.init_state = 1,
-		.task_pin = false,
-	};
-	nrfx_gpiote_out_init(13, &out_config);
-
-	while (true)
-	{
-		nrfx_gpiote_out_toggle(13);
-		k_msleep(100);
-	}
+	nrf_clock_int_disable(NRF_CLOCK, 0xFFFFFFFF);
 }
 
 void main(void)
 {
 
 	internalFlashDeviceId = device_get_binding(DT_NODE_FULL_NAME(DT_CHOSEN(zephyr_flash_controller)));
+
+	// lock bootloadaer memory
+	int res = zephyrFlashLock(0x0, ROCKETZ_BOOTLOADER_SIZE_MAX, FLASH_LOCK_WRITE);
+
+	if (res < 0)
+	{
+		bootLog("ERROR: Failed to lock boot area.");
+		bootloader_restart();
+	}
 
 	bootloader_run();
 
@@ -163,6 +165,79 @@ void main(void)
 	}
 }
 
-#if ROCKETZ_TEST_APP
+struct arm_vector_table
+{
+	uint32_t msp;
+	uint32_t reset;
+};
 
+void bootloader_jump(size_t offset)
+{
+	struct arm_vector_table *vt;
+
+	/* The beginning of the image is the ARM vector table, containing
+	 * the initial stack pointer address and the reset vector
+	 * consecutively. Manually set the stack pointer and jump into the
+	 * reset vector
+	 */
+
+	vt = (struct arm_vector_table *)(offset);
+
+	if (IS_ENABLED(CONFIG_SYSTEM_TIMER_HAS_DISABLE_SUPPORT))
+	{
+		sys_clock_disable();
+	}
+
+#if CONFIG_NRF_CLEANUP_PERIPHERAL
+	nrf_cleanup();
 #endif
+
+#if CONFIG_CLEANUP_ARM_CORE
+	cleanup_arm_nvic(); /* cleanup NVIC registers */
+
+#ifdef CONFIG_CPU_CORTEX_M_HAS_CACHE
+	/* Disable instruction cache and data cache before chain-load the application */
+	SCB_DisableDCache();
+	SCB_DisableICache();
+#endif
+
+#if CONFIG_CPU_HAS_ARM_MPU || CONFIG_CPU_HAS_NXP_MPU
+	z_arm_clear_arm_mpu_config();
+#endif
+
+#if defined(CONFIG_BUILTIN_STACK_GUARD) && \
+	defined(CONFIG_CPU_CORTEX_M_HAS_SPLIM)
+	/* Reset limit registers to avoid inflicting stack overflow on image
+	 * being booted.
+	 */
+	__set_PSPLIM(0);
+	__set_MSPLIM(0);
+#endif
+
+#else
+	irq_lock();
+#endif /* CONFIG_CLEANUP_ARM_CORE */
+
+#ifdef CONFIG_BOOT_INTR_VEC_RELOC
+#if defined(CONFIG_SW_VECTOR_RELAY)
+	_vector_table_pointer = vt;
+#ifdef CONFIG_CPU_CORTEX_M_HAS_VTOR
+	SCB->VTOR = (uint32_t)__vector_relay_table;
+#endif
+#elif defined(CONFIG_CPU_CORTEX_M_HAS_VTOR)
+	SCB->VTOR = (uint32_t)vt;
+#endif /* CONFIG_SW_VECTOR_RELAY */
+#else  /* CONFIG_BOOT_INTR_VEC_RELOC */
+#if defined(CONFIG_CPU_CORTEX_M_HAS_VTOR) && defined(CONFIG_SW_VECTOR_RELAY)
+	_vector_table_pointer = _vector_start;
+	SCB->VTOR = (uint32_t)__vector_relay_table;
+#endif
+#endif /* CONFIG_BOOT_INTR_VEC_RELOC */
+
+	__set_MSP(vt->msp);
+#if CONFIG_CLEANUP_ARM_CORE
+	__set_CONTROL(0x00); /* application will configures core on its own */
+	__ISB();
+#endif
+	((void (*)(void))vt->reset)();
+}

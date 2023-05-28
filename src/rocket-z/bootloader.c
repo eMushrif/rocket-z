@@ -4,6 +4,8 @@
 #include <zephyr/sys/base64.h>
 #include <zephyr/kernel.h>
 
+#include "config.h"
+
 static struct BootFlashDevice *internalFlash;
 struct BootInfoBuffer bootInfoBuffer;
 
@@ -45,7 +47,7 @@ void bootloader_run()
     appImage_setSignature(&h, "{\"authenticator\":\"Zodiac\",\"authorId\":\"9090\",\"time\":1680531112,\"variantPattern\":\"my-pro\",\"size\":37448,\"sha256\":\"rCQIM0QV7aedK1JUp6T4u4Der6hHUkgwwi/artFoemI=\"}", "MEUCIQDnVlvU8km2YR014pZL+ABq36jaiuqkRqSxEbAdH0F2eQIgEz9fFW7IPMQr5titiU7yFwIwPoM9zbwAo+90JvLqS4Q=", SIGNATURE_VERSION_0_0);
     appImage_setHeader(&h, IMAGE_HEADER_VERSION_0_0, 800);
 
-    // appImage_setLoadRequest(&bootInfo->stores[2]);
+    appImage_setLoadRequest(&bootInfo->stores[0]);
 
     appImage_setHasImage(&bootInfo->stores[0], true);
     appImage_setHasImage(&bootInfo->stores[2], true);
@@ -244,7 +246,7 @@ void bootloader_run()
     // jump to loaded image
     // copid from ncs\v2.3.0\bootloader\mcuboot\boot\zephyr\main.c
 
-    bootloader_jump();
+    bootloader_jump(ROCKETZ_APP_ADDR + header.headerSize);
 }
 
 // select a rollback image

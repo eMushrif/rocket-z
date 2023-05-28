@@ -1,11 +1,20 @@
-#include <zephyr/sys/base64.h>
 #include <stdbool.h>
 #include "pem-decode.h"
 #include "tiny-asn1.h"
 #include <string.h>
-#include <zephyr/kernel.h>
 
-K_HEAP_DEFINE(pem_heap, 1024);
+extern int pem_base64_decode(uint8_t *dst, size_t dlen, size_t *olen, const uint8_t *src,
+                             size_t slen);
+
+#if __has_include(<zephyr/sys/base64.h>)
+#include <zephyr/sys/base64.h>
+
+int pem_base64_decode(uint8_t *dst, size_t dlen, size_t *olen, const uint8_t *src,
+                      size_t slen)
+{
+    return base64_decode(dst, dlen, olen, src, slen);
+}
+#endif
 
 size_t pemExpectedSize(enum DerObjectType type)
 {
@@ -95,7 +104,7 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
     uint8_t der[1024];
     size_t der_len = 0;
 
-    if (base64_decode(der, sizeof(der), &der_len, pem + start, end - start) != 0)
+    if (pem_base64_decode(der, sizeof(der), &der_len, pem + start, end - start) < 0)
     {
         return -EINVAL;
     }
@@ -117,18 +126,11 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
         return -EINVAL;
     }
 
-    k_heap_init(&pem_heap, pem_heap.heap.init_mem, pem_heap.heap.init_bytes);
-    asn1_tree *asn1_objects = (asn1_tree *)(k_heap_alloc(&pem_heap, sizeof(asn1_tree) * asn1_object_count, K_NO_WAIT));
-    if (asn1_objects == NULL)
-    {
-        // failed to allocate
-        return -2000;
-    }
+    asn1_tree asn1_objects[25];
 
     if (der_decode(der, der_len, asn1_objects, asn1_objects + 1, asn1_object_count) < 0)
     {
         // failed to decode
-        k_heap_free(&pem_heap, asn1_objects);
         return -2000;
     }
 
@@ -146,13 +148,11 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
 
         if (NULL == object)
         {
-            k_heap_free(&pem_heap, asn1_objects);
             return -EINVAL;
         }
 
         if (object->length < pemExpectedSize(type))
         {
-            k_heap_free(&pem_heap, asn1_objects);
             return -EINVAL;
         }
 
@@ -167,13 +167,11 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
 
         if (NULL == object)
         {
-            k_heap_free(&pem_heap, asn1_objects);
             return -EINVAL;
         }
 
         if (object->length < pemExpectedSize(type))
         {
-            k_heap_free(&pem_heap, asn1_objects);
             return -EINVAL;
         }
 
@@ -200,13 +198,11 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
 
         if (NULL == certObject)
         {
-            k_heap_free(&pem_heap, asn1_objects);
             return -EINVAL;
         }
 
         if (certObject->length < 32)
         {
-            k_heap_free(&pem_heap, asn1_objects);
             return -EINVAL;
         }
 
@@ -227,13 +223,11 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
                 goto sign_search;
             }
 
-            k_heap_free(&pem_heap, asn1_objects);
             return -EINVAL;
         }
 
         if (algoObject->length < 32)
         {
-            k_heap_free(&pem_heap, asn1_objects);
             return -EINVAL;
         }
 
@@ -243,8 +237,6 @@ int pemExtract(const char *pem, enum DerObjectType type, uint8_t *data, size_t *
 
     if (NULL != len)
         *len = pemExpectedSize(type);
-
-    k_heap_free(&pem_heap, asn1_objects);
 
     return identifierFound ? 0 : -1;
 }
