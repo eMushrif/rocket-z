@@ -205,6 +205,80 @@ extern "C"
     int bootInfo_rng(uint8_t *data, size_t size);
 
     /**
+     * \brief Load boot information from flash
+     * \param address Address in flash where the boot information is stored
+     * \param buff Pointer to the boot information structure output
+     * \return Pointer to the boot information structure. Null if the boot information is invalid.
+     */
+    struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff);
+
+    /**
+     * \brief Save boot information to flash if it has changed
+     * \param address Address in flash where the boot information is stored
+     * \param info Pointer to the boot information structure buffer
+     * \return 0 on success, BootError on error
+     */
+    enum BootError bootInfo_save(uint32_t address, const struct BootInfoBuffer *info);
+
+    /**
+     * \brief Check if image is the one currently loaded
+     * \param header Pointer to the image header structure
+     * \param bootInfo Pointer to the boot information structure
+     * \return true if image is the one currently loaded, false otherwise
+     */
+    bool appImage_isCurrent(const struct AppImageHeader *header, const struct BootInfo *bootInfo);
+
+    /**
+     * \brief Set image address in images store flash
+     * \param info Pointer to the image information structure
+     * \param type Where the image is stored
+     * \param offset Address in flash where the image is stored. must point to image header.
+     * \param maxSize Maximum size for storage location
+     */
+    void bootInfo_setStore(struct AppImageStore *info, enum AppImageStorage storage, size_t offset, size_t maxSize);
+
+    /**
+     * \brief Set whethre a store has a valid image
+     * \param store Pointer to the image store struct
+     * \param status target status
+     */
+    void bootInfo_setHasImage(struct AppImageStore *store, bool hasImage);
+
+    /**
+     * \brief Check if store contains image data
+     * \param store Pointer to the image store struct
+     * \return true if image is valid, false otherwise
+     */
+    bool bootInfo_hasImage(const struct AppImageStore *store);
+
+    /**
+     * \brief Set currently-running image variant name
+     * \param info Pointer to the image information structure
+     * \param variant Image variant information.
+     * \return 0 on success, BootError on error
+     */
+    enum BootError bootInfo_setCurrentVariant(struct BootInfo *store, const char *variant);
+
+    /**
+     * \brief Mark image to be loaded
+     * \param store Pointer to store information structure
+     */
+    void bootInfo_setLoadRequest(struct AppImageStore *store);
+
+    /**
+     * \brief Clear image load request
+     * \param store Pointer to store information structure
+     */
+    void bootInfo_clearLoadRequest(struct AppImageStore *store);
+
+    /**
+     * \brief Check if image has a load request
+     * \param store Pointer to store information structure
+     * \return true if image has a load request, false otherwise
+     */
+    bool bootInfo_hasLoadRequest(const struct AppImageStore *store);
+
+    /**
      * \brief Read image header from flash
      * \param header Pointer to the image header structure
      * \param store Pointer to the image information structure
