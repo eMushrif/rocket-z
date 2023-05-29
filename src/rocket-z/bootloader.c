@@ -37,9 +37,9 @@ void bootloader_run()
     }
 
 #if 1 // For testing
-    appImage_setStore(&bootInfo->stores[0], BOOT_IMG_STORAGE_INTERNAL_FLASH, 0x20000, 0x20000);
+    bootInfo_setStore(&bootInfo->stores[0], BOOT_IMG_STORAGE_INTERNAL_FLASH, 0x20000, 0x20000);
 
-    appImage_setStore(&bootInfo->stores[2], BOOT_IMG_STORAGE_INTERNAL_FLASH, 0x40000, 0x20000);
+    bootInfo_setStore(&bootInfo->stores[2], BOOT_IMG_STORAGE_INTERNAL_FLASH, 0x40000, 0x20000);
 
     struct AppImageHeader h;
     appImage_setName(&h, "image11111");
@@ -47,10 +47,10 @@ void bootloader_run()
     appImage_setSignature(&h, "{\"authenticator\":\"Zodiac\",\"authorId\":\"9090\",\"time\":1680531112,\"variantPattern\":\"my-pro\",\"size\":37448,\"sha256\":\"rCQIM0QV7aedK1JUp6T4u4Der6hHUkgwwi/artFoemI=\"}", "MEUCIQDnVlvU8km2YR014pZL+ABq36jaiuqkRqSxEbAdH0F2eQIgEz9fFW7IPMQr5titiU7yFwIwPoM9zbwAo+90JvLqS4Q=", SIGNATURE_VERSION_0_0);
     appImage_setHeader(&h, IMAGE_HEADER_VERSION_0_0, 800);
 
-    appImage_setLoadRequest(&bootInfo->stores[0]);
+    bootInfo_setLoadRequest(&bootInfo->stores[0]);
 
-    appImage_setHasImage(&bootInfo->stores[0], true);
-    appImage_setHasImage(&bootInfo->stores[2], true);
+    bootInfo_setHasImage(&bootInfo->stores[0], true);
+    bootInfo_setHasImage(&bootInfo->stores[2], true);
     bootInfo_setCurrentVariant(bootInfo, "my-product-dev:master");
 
     bootInfo->failCountMax = 3;
@@ -60,12 +60,12 @@ void bootloader_run()
 
     for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
     {
-        if (appImage_hasLoadRequest(&bootInfo->stores[i]))
+        if (bootInfo_hasLoadRequest(&bootInfo->stores[i]))
         {
             bootLog("INFO: Store #%d has load request", i);
 
             // clear load request
-            appImage_clearLoadRequest(&bootInfo->stores[i]);
+            bootInfo_clearLoadRequest(&bootInfo->stores[i]);
 
             // save boot info
             bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
@@ -77,7 +77,7 @@ void bootloader_run()
             if (res < 0)
             {
                 bootLog("ERROR: Store %d has load request but failed to read image header of image. Will not be loaded.", i);
-                appImage_setHasImage(&bootInfo->stores[i], false);
+                bootInfo_setHasImage(&bootInfo->stores[i], false);
                 continue;
             }
 
@@ -89,7 +89,7 @@ void bootloader_run()
             if (verified < 0)
             {
                 bootLog("ERROR: Image %d:%.64s failed verification. Will not be loaded.", i, header.imageName);
-                appImage_setHasImage(&bootInfo->stores[i], false);
+                bootInfo_setHasImage(&bootInfo->stores[i], false);
                 continue;
             }
 
@@ -100,7 +100,7 @@ void bootloader_run()
             if (verified < 0)
             {
                 bootLog("ERROR: Image %d:%.64s failed checksum verification. Will not be loaded.", i, header.imageName);
-                appImage_setHasImage(&bootInfo->stores[i], false);
+                bootInfo_setHasImage(&bootInfo->stores[i], false);
                 continue;
             }
 #endif
@@ -114,7 +114,7 @@ void bootloader_run()
                 continue;
             }
 
-            appImage_setHasImage(&bootInfo->stores[i], true);
+            bootInfo_setHasImage(&bootInfo->stores[i], true);
 
             bootInfo_failClear(bootInfo);
 
@@ -129,7 +129,7 @@ void bootloader_run()
     if (res < 0)
     {
         bootLog("ERROR: Failed to read image header of loaded image.");
-        appImage_setHasImage(&bootInfo->appStore, false);
+        bootInfo_setHasImage(&bootInfo->appStore, false);
         rollback();
     }
 
@@ -207,7 +207,7 @@ void bootloader_run()
         if (bootInfo_getFailCount(bootInfo) > bootInfo->failCountMax)
         {
             bootLog("ERROR: Current image failed to clear fail flags many times (max %d). Rolling back.", bootInfo->failCountMax);
-            appImage_setHasImage(&bootInfo->appStore, false);
+            bootInfo_setHasImage(&bootInfo->appStore, false);
             rollback();
         }
     }
@@ -239,7 +239,7 @@ void bootloader_run()
     }
 #endif
 
-    appImage_setHasImage(&bootInfo->appStore, true);
+    bootInfo_setHasImage(&bootInfo->appStore, true);
 
     bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
 
@@ -257,11 +257,11 @@ void rollback()
 {
     struct BootInfo *bootInfo = &bootInfoBuffer.bootInfo;
 
-    if (appImage_hasImage(&bootInfo->appStore))
+    if (bootInfo_hasImage(&bootInfo->appStore))
     {
         // set invalid image
         bootLog("INFO: Same image will be tried again");
-        appImage_setHasImage(&bootInfo->appStore, false);
+        bootInfo_setHasImage(&bootInfo->appStore, false);
         bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
         bootloader_restart();
     }
@@ -278,7 +278,7 @@ void rollback()
 
             bootLog("INFO: Rolling back to image %d:%.64s after restart", bootInfo->rollbackImageIndex, header.imageName);
             bootInfo->rollbackImageIndex = -1;
-            appImage_setLoadRequest(&bootInfo->stores[bootInfo->rollbackImageIndex]);
+            bootInfo_setLoadRequest(&bootInfo->stores[bootInfo->rollbackImageIndex]);
             bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
             bootloader_restart();
         }
@@ -289,7 +289,7 @@ void rollback()
             // try to find any store with an image image that is not same as the current image
             for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
             {
-                if (!appImage_hasImage(&bootInfo->stores[i]))
+                if (!bootInfo_hasImage(&bootInfo->stores[i]))
                     continue;
 
                 int res = appImage_readHeader(&header, &bootInfo->stores[i]);
@@ -301,7 +301,7 @@ void rollback()
                     bootLog("INFO: Found a different image to rollback to");
                     bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                     bootInfo->rollbackImageIndex = -1;
-                    appImage_setLoadRequest(&bootInfo->stores[i]);
+                    bootInfo_setLoadRequest(&bootInfo->stores[i]);
                     bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
                     bootloader_restart();
                 }
@@ -310,7 +310,7 @@ void rollback()
             // try to find any image at all
             for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
             {
-                if (!appImage_hasImage(&bootInfo->stores[i]))
+                if (!bootInfo_hasImage(&bootInfo->stores[i]))
                     continue;
 
                 int res = appImage_readHeader(&header, &bootInfo->stores[i]);
@@ -320,7 +320,7 @@ void rollback()
                 bootLog("INFO: Couldn't find a different image to rollback to. Will try to rollback to the same image.");
                 bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                 bootInfo->rollbackImageIndex = -1;
-                appImage_setLoadRequest(&bootInfo->stores[i]);
+                bootInfo_setLoadRequest(&bootInfo->stores[i]);
                 bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
                 bootloader_restart();
             }
@@ -332,18 +332,18 @@ void rollback()
                 if (res < 0)
                     continue;
 
-                appImage_setHasImage(&bootInfo->stores[i], true);
+                bootInfo_setHasImage(&bootInfo->stores[i], true);
 
                 if (0 != appImage_verify(&bootInfo->stores[i], bootInfo))
                 {
-                    appImage_setHasImage(&bootInfo->stores[i], false);
+                    bootInfo_setHasImage(&bootInfo->stores[i], false);
                     continue;
                 }
 
                 bootLog("INFO: No store has an image to rollback to. Will try any store even if marked as not hasImage.");
                 bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                 bootInfo->rollbackImageIndex = -1;
-                appImage_setLoadRequest(&bootInfo->stores[i]);
+                bootInfo_setLoadRequest(&bootInfo->stores[i]);
                 bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
                 bootloader_restart();
             }
@@ -357,7 +357,7 @@ void rollback()
 
 int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo)
 {
-    if (appImage_hasImage(&bootInfo->appStore))
+    if (bootInfo_hasImage(&bootInfo->appStore))
     {
         // read store header
         struct AppImageHeader header;
@@ -375,7 +375,7 @@ int loadImage(struct AppImageStore *store, struct BootInfo *bootInfo)
                     continue;
                 }
 
-                if (appImage_hasImage(&bootInfo->stores[i]) && appImage_isCurrent(&header, bootInfo))
+                if (bootInfo_hasImage(&bootInfo->stores[i]) && appImage_isCurrent(&header, bootInfo))
                 {
                     bootLog("INFO: Image %d:%.64s is selected as backup", i, header.imageName);
                     bootInfo->rollbackImageIndex = i;
