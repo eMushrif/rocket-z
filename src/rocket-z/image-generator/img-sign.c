@@ -11,11 +11,12 @@
 #include <openssl/pem.h>
 #include <string.h>
 #include <time.h>
+#include <stdint.h>
 
 void print_usage()
 {
     printf("Usage:\n");
-    printf("img-sign {-f file_path | -d base64_sha256_string -s file_size} [-a author_id] [-k key_file]\n");
+    printf("img-sign {-f file_path | -d base64_sha256_string -s file_size} [-a author_id] [-v variant_pattern] [-k key_file]\n");
 }
 
 EC_KEY *readPrivateKey(char *key_file)
@@ -192,4 +193,14 @@ int main(int argc, char **argv)
     printf("%d\n%s\n%s\n", version, msg_base64, base64Signature);
 
     return 0;
+}
+
+void bootLog(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+
+    printf("\n");
 }

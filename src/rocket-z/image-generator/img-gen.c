@@ -225,10 +225,11 @@ int main(int argc, char *argv[])
     // Convert to PEM format
     BIO *bio = BIO_new(BIO_s_mem());
     PEM_write_bio_EC_PUBKEY(bio, key);
-    char *public_key = NULL;
+    char* public_key;
+	
     long public_key_len = BIO_get_mem_data(bio, &public_key);
 
-    // read public key from file into a string
+    // read peer public key from file into a string
     FILE *public_key_file = fopen(publicKeyFile, "rb");
 
     if (public_key_file == NULL)
@@ -242,6 +243,12 @@ int main(int argc, char *argv[])
     memset(peerPublicKey, 0, MAX_LENGTH);
 
     read = fread(peerPublicKey, 1, MAX_LENGTH, public_key_file);
+	
+	if (read < 0)
+	{
+		printf("Could not read file\n");
+        return 1;
+	}
 
     // Existing public key
     char *peer_public_key_string = peerPublicKey;
@@ -313,7 +320,14 @@ int main(int argc, char *argv[])
 
     // Read the file into a buffer
     unsigned char *plaintext = malloc(fsize + 1);
-    fread(plaintext, 1, fsize, file);
+    read = fread(plaintext, 1, fsize, file);
+	
+	if (read < 0)
+	{
+		printf("Could not read file\n");
+        return 1;
+	}
+	
     fclose(file);
 
     // Allocate memory for the ciphertext
