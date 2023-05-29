@@ -36,7 +36,7 @@ void bootloader_run()
         bootloader_restart();
     }
 
-#if 1 // For testing
+#if 0 // For testing
     bootInfo_setStore(&bootInfo->stores[0], BOOT_IMG_STORAGE_INTERNAL_FLASH, 0x20000, 0x20000);
 
     bootInfo_setStore(&bootInfo->stores[2], BOOT_IMG_STORAGE_INTERNAL_FLASH, 0x40000, 0x20000);

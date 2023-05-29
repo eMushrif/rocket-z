@@ -7,7 +7,7 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(hello_world)
 
 target_sources(
-app PRIVATE src/main.c src/rocket-z/controller.c src/rocket-z/bootloader.c
+app PRIVATE src/main.c src/rocket-z/controller.c src/rocket-z/bootloader.c src/rocket-z/boot-info-ctrl.c
 $ENV{ZEPHYR_BASE}/lib/os/json.c
 $ENV{ZEPHYR_BASE}/lib/os/base64.c
 $ENV{NCS_PATH_2_3}/modules/crypto/tinycrypt/lib/source/sha256.c

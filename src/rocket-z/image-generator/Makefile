@@ -9,3 +9,6 @@ img-sign: img-sign.c
 
 img-gen: img-gen.c
 	$(CC) -o img-gen ../pem/tiny-asn1.c ../pem/pem-decode.c ../header-gen.c img-gen.c $(CFLAGS) $(LIBS)
+
+clean:
+	rm img-gen img-sign

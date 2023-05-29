@@ -13,6 +13,10 @@
 #include <time.h>
 #include <stdint.h>
 
+#ifdef _WIN32
+#include <openssl/applink.c>
+#endif
+
 void print_usage()
 {
     printf("Usage:\n");

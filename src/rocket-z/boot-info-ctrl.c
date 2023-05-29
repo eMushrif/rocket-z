@@ -1,3 +1,4 @@
+#include "config.h"
 #include "controller.h"
 
 struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff)
