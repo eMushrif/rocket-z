@@ -3,11 +3,14 @@
 #include <string.h>
 #include <zephyr/sys/base64.h>
 #include <zephyr/kernel.h>
+#include <tinycrypt/sha256.h>
 
 #include "config.h"
 
 static struct BootFlashDevice *internalFlash;
 struct BootInfoBuffer bootInfoBuffer;
+
+bool noLock = false;
 
 void bootloader_run()
 {
@@ -124,6 +127,21 @@ void bootloader_run()
 
     bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
 
+    res = internalFlash->lock(ROCKETZ_KEY_ADDR, 512, FLASH_LOCK_ALL);
+
+    if (res < 0)
+    {
+        bootLog("WARNING: Failed to lock secret area.");
+        bootloader_restart();
+    }
+
+#if DEBUG_ONLY
+    bootInfo_failClear(bootInfo);
+    bootInfo_setHasImage(&bootInfo->appStore, true);
+    bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+    bootloader_jump(ROCKETZ_APP_ADDR + ROCKETZ_DEFAULT_HEADER_SIZE);
+#endif
+
     res = appImage_readHeader(&header, &bootInfo->appStore);
 
     if (res < 0)
@@ -138,14 +156,6 @@ void bootloader_run()
     if (res < 0)
     {
         bootLog("WARNING: Failed to lock app area.");
-        bootloader_restart();
-    }
-
-    res = internalFlash->lock(ROCKETZ_KEY_ADDR, 512, FLASH_LOCK_ALL);
-
-    if (res < 0)
-    {
-        bootLog("WARNING: Failed to lock secret area.");
         bootloader_restart();
     }
 
@@ -277,8 +287,8 @@ void rollback()
                 bootLog("WARNING: Failed to read image header of rollback image. Will try it anyway.");
 
             bootLog("INFO: Rolling back to image %d:%.64s after restart", bootInfo->rollbackImageIndex, header.imageName);
-            bootInfo->rollbackImageIndex = -1;
             bootInfo_setLoadRequest(&bootInfo->stores[bootInfo->rollbackImageIndex]);
+            bootInfo->rollbackImageIndex = -1;
             bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
             bootloader_restart();
         }

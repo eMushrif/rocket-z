@@ -29,9 +29,9 @@ struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff)
 
         // set boot version
         info->version = BOOT_VERSION_0_0;
-    }
 
-    info->rollbackImageIndex = -1;
+        info->rollbackImageIndex = -1;
+    }
 
     // make sure appStore parameters are not changed
     bootInfo_setStore(&info->appStore, BOOT_IMG_STORAGE_INTERNAL_FLASH, ROCKETZ_APP_ADDR, ROCKETZ_MAX_APPIMAGE_SIZE);

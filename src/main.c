@@ -145,17 +145,7 @@ void nrf_cleanup()
 
 void main(void)
 {
-
 	internalFlashDeviceId = device_get_binding(DT_NODE_FULL_NAME(DT_CHOSEN(zephyr_flash_controller)));
-
-	// lock bootloadaer memory
-	int res = zephyrFlashLock(0x0, ROCKETZ_BOOTLOADER_SIZE_MAX, FLASH_LOCK_WRITE);
-
-	if (res < 0)
-	{
-		bootLog("ERROR: Failed to lock boot area.");
-		bootloader_restart();
-	}
 
 	bootloader_run();
 
