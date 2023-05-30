@@ -14,16 +14,9 @@ bool noLock = false;
 
 void bootloader_run()
 {
+    int res;
+
     internalFlash = bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH);
-
-    // lock bootloadaer memory
-    int res = internalFlash->lock(0x0, ROCKETZ_BOOTLOADER_SIZE_MAX, FLASH_LOCK_WRITE);
-
-    if (res < 0)
-    {
-        bootLog("ERROR: Failed to lock boot area.");
-        bootloader_restart();
-    }
 
     bootLogInit(internalFlash, ROCKETZ_LOG_ADDR);
 
@@ -37,6 +30,43 @@ void bootloader_run()
     {
         bootLog("ERROR: Boot info version not supported.");
         bootloader_restart();
+    }
+
+#ifdef ROCKETZ_NO_LOCK_HASH
+
+    // check if memory should be locked for security
+
+    struct tc_sha256_state_struct digestSha;
+
+    tc_sha256_init(&digestSha);
+
+    tc_sha256_update(&digestSha, (const uint8_t *)bootInfo->noLockCode, sizeof(bootInfo->noLockCode));
+
+    uint8_t digest[TC_SHA256_DIGEST_SIZE];
+
+    tc_sha256_final(digest, &digestSha);
+
+    static const uint8_t noLockCodeHash[] = ROCKETZ_NO_LOCK_HASH;
+
+    if (memcmp(digest, noLockCodeHash, sizeof(noLockCodeHash)) == 0)
+    {
+        noLock = true;
+        bootLog("WARNING: No-lock code detected");
+    }
+#endif
+
+    memset(bootInfo->noLockCode, 0, sizeof(bootInfo->noLockCode));
+
+    if (!noLock)
+    {
+        // lock bootloadaer memory
+        res = internalFlash->lock(0x0, ROCKETZ_BOOTLOADER_SIZE_MAX, FLASH_LOCK_WRITE);
+
+        if (res < 0)
+        {
+            bootLog("ERROR: Failed to lock boot area.");
+            bootloader_restart();
+        }
     }
 
 #if 0 // For testing
@@ -127,15 +157,18 @@ void bootloader_run()
 
     bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
 
-    res = internalFlash->lock(ROCKETZ_KEY_ADDR, 512, FLASH_LOCK_ALL);
-
-    if (res < 0)
+    if (!noLock)
     {
-        bootLog("WARNING: Failed to lock secret area.");
-        bootloader_restart();
+        res = internalFlash->lock(ROCKETZ_KEY_ADDR, 512, FLASH_LOCK_ALL);
+
+        if (res < 0)
+        {
+            bootLog("WARNING: Failed to lock secret area.");
+            bootloader_restart();
+        }
     }
 
-#if DEBUG_ONLY
+#if 1 || DEBUG_ONLY
     bootInfo_failClear(bootInfo);
     bootInfo_setHasImage(&bootInfo->appStore, true);
     bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
@@ -151,12 +184,15 @@ void bootloader_run()
         rollback();
     }
 
-    res = internalFlash->lock(ROCKETZ_APP_ADDR, MIN(ROCKETZ_MAX_APPIMAGE_SIZE, header.encryption.encryptedSize), FLASH_LOCK_WRITE);
-
-    if (res < 0)
+    if (!noLock)
     {
-        bootLog("WARNING: Failed to lock app area.");
-        bootloader_restart();
+        res = internalFlash->lock(ROCKETZ_APP_ADDR, MIN(ROCKETZ_MAX_APPIMAGE_SIZE, header.encryption.encryptedSize), FLASH_LOCK_WRITE);
+
+        if (res < 0)
+        {
+            bootLog("WARNING: Failed to lock app area.");
+            bootloader_restart();
+        }
     }
 
 #if 0 // For testing

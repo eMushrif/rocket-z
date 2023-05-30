@@ -179,6 +179,8 @@ extern "C"
         uint32_t failFlags; //< Inverted bit field of fail marks
         uint32_t failClears;
 
+        uint8_t noLockCode[32]; //< Passcode used to prevent the bootloader from locking memory
+
         struct AppImageStore stores[4];
     };
     /**

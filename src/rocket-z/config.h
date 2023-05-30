@@ -47,6 +47,13 @@
 #define ROCKETZ_BOOTLOADER_SIZE_MAX ROCKETZ_KEY_ADDR
 #endif
 
+#ifndef ROCKETZ_NO_LOCK_HASH
+#define ROCKETZ_NO_LOCK_HASH                                                                                                                                                                           \
+    {                                                                                                                                                                                                  \
+        0x6f, 0xa6, 0xfd, 0xd3, 0x6b, 0x6f, 0xc9, 0x2a, 0x61, 0x60, 0xdf, 0xb1, 0x65, 0x49, 0x47, 0xc6, 0x3f, 0x7e, 0x52, 0x23, 0x49, 0xe7, 0x3e, 0x99, 0xb8, 0x2d, 0x3d, 0xee, 0x06, 0x03, 0x9d, 0xf5 \
+    }
+#endif
+
 #ifndef ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE
 #define ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE 512
 #endif
