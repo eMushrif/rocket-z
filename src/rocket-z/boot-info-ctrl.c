@@ -29,10 +29,8 @@ struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff)
 
         // set boot version
         info->version = BOOT_VERSION_0_0;
-
         info->rollbackImageIndex = -1;
-
-        info->wdtTimeout = ROCKETZ_WDT_TIMEOUT_DEFAULT;
+        info->wdtChannelCount = 0;
     }
 
     // make sure appStore parameters are not changed

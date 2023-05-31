@@ -164,24 +164,18 @@ extern "C"
      */
     struct BootInfo
     {
-        uint32_t version; //< Struct version
-
-        char bootloaderName[32]; //< Friendly bootloader name
-
-        char currentVariant[100]; //< Current variant name
-
-        uint8_t rollbackImageIndex; //< Index of the image to rollback to
-
+        uint32_t version;              //< Struct version
+        char bootloaderName[32];       //< Friendly bootloader name
+        char currentVariant[100];      //< Current variant name
+        uint8_t rollbackImageIndex;    //< Index of the image to rollback to
         struct AppImageStore appStore; //< Information about the currently loaded image
-
-        uint32_t failCountMax; //< Maximum number of times to run the image before marking it as invalid
-
-        uint32_t failFlags; //< Inverted bit field of fail marks
+        uint32_t failCountMax;         //< Maximum number of times to run the image before marking it as invalid
+        uint32_t failFlags;            //< Inverted bit field of fail marks
         uint32_t failClears;
-
-        uint8_t noLockCode[32]; //< Passcode used to prevent the bootloader from locking memory
-
-        uint32_t wdtTimeout; //< Watchdog timeout in milliseconds
+        uint8_t noLockCode[32];   //< Passcode used to prevent the bootloader from locking memory
+        uint32_t wdtTimeout;      //< Watchdog timeout in milliseconds
+        uint32_t wdtChannelCount; //< Number of watchdog channels
+        uint32_t wdtOptions;      //< Device-specific watchdog options.
 
         struct AppImageStore stores[4];
     };

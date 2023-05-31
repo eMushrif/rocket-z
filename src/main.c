@@ -159,23 +159,29 @@ void main(void)
 {
 	// Setup WDT
 
-	wdt_dev = device_get_binding(DT_NODE_FULL_NAME(DT_ALIAS(watchdog0)));
-
-	int res;
-
+	uint32_t wdtChannelCount = ((struct BootInfo *)(ROCKETZ_BOOT_INFO_ADDR))->wdtChannelCount;
 	uint32_t wdtTimeout = ((struct BootInfo *)(ROCKETZ_BOOT_INFO_ADDR))->wdtTimeout;
+	uint32_t wdtOptions = ((struct BootInfo *)(ROCKETZ_BOOT_INFO_ADDR))->wdtOptions;
 
-	res = wdt_install_timeout(wdt_dev, &wdt_settings);
-
-	if (res < 0)
+	if (wdtChannelCount > 0)
 	{
-		wdtTimeout = ROCKETZ_WDT_TIMEOUT_DEFAULT;
+		int res;
+		wdt_dev = device_get_binding(DT_NODE_FULL_NAME(DT_ALIAS(watchdog0)));
+
+		for (int i = wdtChannelCount; i > 0; i--)
+		{
+			res = wdt_install_timeout(wdt_dev, &wdt_settings);
+
+			if (res < 0)
+			{
+				break;
+			}
+
+			wdt_feed(wdt_dev, res);
+		}
+
+		wdt_setup(wdt_dev, wdtOptions);
 	}
-
-	wdt_feed(wdt_dev, 0);
-
-	if (res >= 0)
-		wdt_setup(wdt_dev, WDT_OPT_PAUSE_HALTED_BY_DBG);
 
 #if 0 // For testing. changing WDT timeout
 
