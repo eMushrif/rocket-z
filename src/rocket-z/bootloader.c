@@ -126,7 +126,7 @@ void bootloader_run()
                 continue;
             }
 
-#if 1
+#if 0
             // verify checksum of new image
             verified = appImage_verifyChecksum(&bootInfo->stores[i]);
 
@@ -168,7 +168,7 @@ void bootloader_run()
         }
     }
 
-#if 1 || DEBUG_ONLY
+#if 0 || DEBUG_ONLY
     bootInfo_failClear(bootInfo);
     bootInfo_setHasImage(&bootInfo->appStore, true);
     bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);

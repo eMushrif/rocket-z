@@ -19,7 +19,7 @@
 
 void print_help()
 {
-    printf("Usage: img-gen -f binary_file -n image_name -s signature_file -k bootloader_public_pem_file [-c bootloader_key_crc32] -o output_file\n\n");
+    printf("Usage: img-gen -f binary_file -n image_name -s signature_file -k bootloader_public_pem_file [-c bootloader_key_crc32] -o output_file [-u unencrypted_image_output]\n\n");
     printf("This tool performs cryptographic operations on the input binary file using the provided signature and PEM file.\n\n");
     printf("Options:\n");
     printf("  -h, --help    Show this help message and exit.\n");
@@ -121,46 +121,57 @@ void strip_pem_header_footer(char *pem_str)
 }
 
 #ifdef _WIN32
-ssize_t getline(char **lineptr, size_t *n, FILE *stream) {
+ssize_t getline(char **lineptr, size_t *n, FILE *stream)
+{
     char *bufptr = NULL;
     char *p = bufptr;
     size_t size;
     int c;
 
-    if (lineptr == NULL) {
+    if (lineptr == NULL)
+    {
         return -1;
     }
-    if (stream == NULL) {
+    if (stream == NULL)
+    {
         return -1;
     }
-    if (n == NULL) {
+    if (n == NULL)
+    {
         return -1;
     }
     bufptr = *lineptr;
     size = *n;
 
     c = fgetc(stream);
-    if (c == EOF) {
+    if (c == EOF)
+    {
         return -1;
     }
-    if (bufptr == NULL) {
+    if (bufptr == NULL)
+    {
         bufptr = malloc(128);
-        if (bufptr == NULL) {
+        if (bufptr == NULL)
+        {
             return -1;
         }
         size = 128;
     }
     p = bufptr;
-    while(c != EOF) {
-        if ((p - bufptr) > (size - 1)) {
+    while (c != EOF)
+    {
+        if ((p - bufptr) > (size - 1))
+        {
             size = size + 128;
             bufptr = realloc(bufptr, size);
-            if (bufptr == NULL) {
+            if (bufptr == NULL)
+            {
                 return -1;
             }
         }
         *p++ = c;
-        if (c == '\n') {
+        if (c == '\n')
+        {
             break;
         }
         c = fgetc(stream);
@@ -187,11 +198,12 @@ int main(int argc, char *argv[])
     char *signatureFile = NULL;
     char *publicKeyFile = NULL;
     char *outputFile = NULL;
+    char *unencryptedFileOutput = NULL;
     uint32_t crc32 = 0;
 
     int opt;
 
-    while ((opt = getopt(argc, argv, "n:k:s:f:o:c:")) != -1)
+    while ((opt = getopt(argc, argv, "n:k:s:f:o:c:u:")) != -1)
     {
         switch (opt)
         {
@@ -209,6 +221,9 @@ int main(int argc, char *argv[])
             break;
         case 'o':
             outputFile = optarg;
+            break;
+        case 'u':
+            unencryptedFileOutput = optarg;
             break;
         case 'c':
             crc32 = atoi(optarg);
@@ -279,8 +294,8 @@ int main(int argc, char *argv[])
     // Convert to PEM format
     BIO *bio = BIO_new(BIO_s_mem());
     PEM_write_bio_EC_PUBKEY(bio, key);
-    char* public_key;
-	
+    char *public_key;
+
     long public_key_len = BIO_get_mem_data(bio, &public_key);
 
     // read peer public key from file into a string
@@ -297,12 +312,12 @@ int main(int argc, char *argv[])
     memset(peerPublicKey, 0, MAX_LENGTH);
 
     read = fread(peerPublicKey, 1, MAX_LENGTH, public_key_file);
-	
-	if (read < 0)
-	{
-		printf("Could not read file\n");
+
+    if (read < 0)
+    {
+        printf("Could not read file\n");
         return 1;
-	}
+    }
 
     // Existing public key
     char *peer_public_key_string = peerPublicKey;
@@ -375,13 +390,13 @@ int main(int argc, char *argv[])
     // Read the file into a buffer
     unsigned char *plaintext = malloc(fsize + 1);
     read = fread(plaintext, 1, fsize, file);
-	
-	if (read < 0)
-	{
-		printf("Could not read file\n");
+
+    if (read < 0)
+    {
+        printf("Could not read file\n");
         return 1;
-	}
-	
+    }
+
     fclose(file);
 
     // Allocate memory for the ciphertext
@@ -433,6 +448,45 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    if (NULL != unencryptedFileOutput)
+    {
+
+        appImage_setEncryption(&header, public_key, ENCRYPTION_NONE, fsize, crc32);
+
+        FILE *output = fopen(unencryptedFileOutput, "wb");
+
+        if (output == NULL)
+        {
+            printf("Failed to open output file.\n");
+            return 1;
+        }
+
+        int size = fwrite(&header, sizeof(header), 1, output);
+
+        if (size != 1)
+        {
+            printf("Failed to write header to output file. %i.\n", size);
+            return 1;
+        }
+
+        size = fwrite(plaintext, 0x400 - sizeof(header), 1, output);
+
+        if (size != 1)
+        {
+            printf("Failed to write header data to output file.\n");
+            return 1;
+        }
+
+        // write ciphertext
+        size = fwrite(plaintext, fsize, 1, output);
+
+        if (size != 1)
+        {
+            printf("Failed to write ciphertext to output file.\n");
+            return 1;
+        }
+    }
+
     // Cleanup
     free(plaintext);
     EVP_PKEY_CTX_free(ctx);
@@ -446,6 +500,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
-
-
