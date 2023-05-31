@@ -168,7 +168,7 @@ void bootloader_run()
         }
     }
 
-#if 1 || DEBUG_ONLY
+#if DEBUG_ONLY
     bootInfo_failClear(bootInfo);
     bootInfo_setHasImage(&bootInfo->appStore, true);
     bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);

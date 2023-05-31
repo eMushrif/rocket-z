@@ -13,9 +13,11 @@
 #include <zephyr/fatal.h>
 #include <fprotect.h>
 #include <hal/nrf_clock.h>
+#include <zephyr/drivers/watchdog.h>
 #include "rocket-z/config.h"
-
 #include "arm_cleanup.h"
+
+#include "nrfx_wdt.h"
 
 #include "rocket-z/bootloader.h"
 
@@ -143,8 +145,50 @@ void nrf_cleanup()
 	nrf_clock_int_disable(NRF_CLOCK, 0xFFFFFFFF);
 }
 
+const struct device *wdt_dev;
+
+struct wdt_timeout_cfg wdt_settings = {
+	.window = {
+		.min = 0,
+		.max = 300000},
+	.callback = NULL,
+	.flags = WDT_FLAG_RESET_SOC,
+};
+
 void main(void)
 {
+	// Setup WDT
+
+	wdt_dev = device_get_binding(DT_NODE_FULL_NAME(DT_ALIAS(watchdog0)));
+
+	int res;
+
+	uint32_t wdtTimeout = ((struct BootInfo *)(ROCKETZ_BOOT_INFO_ADDR))->wdtTimeout;
+
+	res = wdt_install_timeout(wdt_dev, &wdt_settings);
+
+	if (res < 0)
+	{
+		wdtTimeout = ROCKETZ_WDT_TIMEOUT_DEFAULT;
+	}
+
+	wdt_feed(wdt_dev, 0);
+
+	if (res >= 0)
+		wdt_setup(wdt_dev, WDT_OPT_PAUSE_HALTED_BY_DBG);
+
+#if 0 // For testing. changing WDT timeout
+
+	struct wdt_nrfx_config
+	{
+		nrfx_wdt_t wdt;
+		nrfx_wdt_config_t config;
+	};
+
+	wdt_feed(wdt_dev, 0);
+	((struct wdt_nrfx_config *)(wdt_dev->config))->window.max = 10000;
+#endif
+
 	internalFlashDeviceId = device_get_binding(DT_NODE_FULL_NAME(DT_CHOSEN(zephyr_flash_controller)));
 
 	bootloader_run();

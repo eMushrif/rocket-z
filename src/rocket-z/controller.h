@@ -181,6 +181,8 @@ extern "C"
 
         uint8_t noLockCode[32]; //< Passcode used to prevent the bootloader from locking memory
 
+        uint32_t wdtTimeout; //< Watchdog timeout in milliseconds
+
         struct AppImageStore stores[4];
     };
     /**
