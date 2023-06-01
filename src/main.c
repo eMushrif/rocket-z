@@ -16,6 +16,7 @@
 #include <zephyr/drivers/watchdog.h>
 #include "rocket-z/config.h"
 #include "arm_cleanup.h"
+#include "rocket-z/config.h"
 
 #include "nrfx_wdt.h"
 
@@ -159,9 +160,9 @@ void main(void)
 {
 	// Setup WDT
 
-	uint32_t wdtChannelCount = ((struct BootInfo *)(ROCKETZ_BOOT_INFO_ADDR))->wdtChannelCount;
-	uint32_t wdtTimeout = ((struct BootInfo *)(ROCKETZ_BOOT_INFO_ADDR))->wdtTimeout;
-	uint32_t wdtOptions = ((struct BootInfo *)(ROCKETZ_BOOT_INFO_ADDR))->wdtOptions;
+	uint32_t wdtChannelCount = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtChannelCount;
+	uint32_t wdtTimeout = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtTimeout;
+	uint32_t wdtOptions = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtOptions;
 
 	if (wdtChannelCount > 0)
 	{
