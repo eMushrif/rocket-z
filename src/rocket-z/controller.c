@@ -304,7 +304,7 @@ enum BootError appImage_verify(const struct AppImageStore *store, const struct B
     }
 
     // check encryption method
-    if (header.encryption.method != ENCRYPTION_EC_P256_AES_128_CBC_SHA_256)
+    if (header.encryption.method != ENCRYPTION_EC_P256_AES_128_CBC_SHA_256 && header.encryption.method != ENCRYPTION_NONE)
     {
         bootLog("ERROR: Image %.64s is encrypted with method %d which is not supported", header.imageName, header.encryption.method);
         return BOOT_ERROR_UNSUPPORTED_ENCRYPTION_METHOD;
@@ -374,7 +374,7 @@ enum BootError appImage_verify(const struct AppImageStore *store, const struct B
         return BOOT_ERROR_INVALID_SIZE;
     }
 
-    if (header.encryption.encryptedSize % TC_AES_BLOCK_SIZE != 0)
+    if (header.encryption.method != ENCRYPTION_NONE && header.encryption.encryptedSize % TC_AES_BLOCK_SIZE != 0)
     {
         bootLog("ERROR: Image %.64s has invalid encrypted data size of %d; expected multiple of %d;", header.imageName, messageOut.size, TC_AES_BLOCK_SIZE);
         return BOOT_ERROR_INVALID_SIZE;
@@ -678,7 +678,15 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
                 return res;
             }
 
-            res = tc_cbc_mode_decrypt(decipher, sizeAct, cipher, sizeAct, _iv, (const TCAesKeySched_t)(&secret->sched));
+            if (fromHeader.encryption.method != ENCRYPTION_NONE)
+            {
+                res = tc_cbc_mode_decrypt(decipher, sizeAct, cipher, sizeAct, _iv, (const TCAesKeySched_t)(&secret->sched));
+            }
+            else
+            {
+                res = 1;
+                memcpy(decipher, cipher, sizeAct);
+            }
 
             if (res != 1)
             {
@@ -714,7 +722,15 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
                 return res;
             }
 
-            res = tc_cbc_mode_encrypt(cipher - TC_AES_BLOCK_SIZE /* include prepended iv */, sizeAct + TC_AES_BLOCK_SIZE, decipher, sizeAct, _iv, (const TCAesKeySched_t)(&secret->sched));
+            if (fromHeader.encryption.method != ENCRYPTION_NONE)
+            {
+                res = tc_cbc_mode_encrypt(cipher - TC_AES_BLOCK_SIZE /* include prepended iv */, sizeAct + TC_AES_BLOCK_SIZE, decipher, sizeAct, _iv, (const TCAesKeySched_t)(&secret->sched));
+            }
+            else
+            {
+                res = 1;
+                memcpy(decipher, cipher, sizeAct);
+            }
 
             if (res != 1)
             {
@@ -781,6 +797,8 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
         return res;
     }
 
+    bool isEncrypted = !isLoadedApp && header.encryption.method != ENCRYPTION_NONE;
+
     if (header.headerSize > store->maxSize)
     {
         bootLog("ERROR: Image header (%d bytes) is too large to fit in a storage of max %d bytes", header.headerSize, store->maxSize);
@@ -826,7 +844,7 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
 
     struct Secret secret;
 
-    if (!isLoadedApp)
+    if (isEncrypted)
     {
         // drive encryption key and iv
         res = getEncryptionKey(&header, &secret);
@@ -848,8 +866,6 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
     cipher = buff + (2 * TC_AES_BLOCK_SIZE);
     memcpy(_iv, secret.iv, TC_AES_BLOCK_SIZE);
 
-    // uint8_t *data = (!isLoadedApp) ? decipher : (uint8_t *)store->startAddr;
-
     for (int i = 0; i < header.encryption.encryptedSize; i += ROCKETZ_FLASH_BLOCK_SIZE)
     {
         size_t sizeEncrypted = MIN(ROCKETZ_FLASH_BLOCK_SIZE, header.encryption.encryptedSize - i);
@@ -864,7 +880,7 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
             return res;
         }
 
-        if (!isLoadedApp)
+        if (isEncrypted)
         {
             res = tc_cbc_mode_decrypt(decipher, sizeEncrypted, cipher, sizeEncrypted, _iv, &secret.sched);
 
@@ -876,7 +892,7 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
             }
         }
 
-        res = tc_sha256_update(&sha256State, isLoadedApp ? cipher : decipher, sizeData);
+        res = tc_sha256_update(&sha256State, isEncrypted ? decipher : cipher, sizeData);
 
         // copy new initialization vector
         memcpy(_iv, cipher + sizeEncrypted - TC_AES_BLOCK_SIZE, TC_AES_BLOCK_SIZE);

@@ -67,6 +67,7 @@ extern "C"
 
     enum AppImageEncryptionMethod
     {
+        ENCRYPTION_NONE = 0,
         ENCRYPTION_EC_P256_AES_128_CBC_SHA_256 = 1,
     };
 
