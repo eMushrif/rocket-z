@@ -151,7 +151,7 @@ const struct device *wdt_dev;
 struct wdt_timeout_cfg wdt_settings = {
 	.window = {
 		.min = 0,
-		.max = 300000},
+		.max = 1000000},
 	.callback = NULL,
 	.flags = WDT_FLAG_RESET_SOC,
 };
@@ -163,6 +163,8 @@ void main(void)
 	uint32_t wdtChannelCount = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtChannelCount;
 	uint32_t wdtTimeout = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtTimeout;
 	uint32_t wdtOptions = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtOptions;
+
+	wdt_settings.window.max = wdtTimeout;
 
 	if (wdtChannelCount > 0)
 	{

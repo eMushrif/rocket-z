@@ -202,3 +202,27 @@ void bootInfo_failClear(struct BootInfo *info)
 {
     info->failClears = info->failFlags;
 }
+
+void bootInfo_setFailCountMax(struct BootInfo *info, uint32_t count)
+{
+    if (count > sizeof(info->failFlags) * 8)
+    {
+        return BOOT_ERROR_BAD_ARGUMENT;
+    }
+
+    info->failCountMax = count;
+}
+
+int bootInfo_setWdt(struct BootInfo *info, uint32_t timeout, uint32_t channelCount, uint32_t options)
+{
+    info->wdtChannelCount = channelCount;
+    info->wdtOptions = options;
+    info->wdtTimeout = timeout;
+
+    if (channelCount != info->wdtChannelCount || options != info->wdtOptions || timeout != info->wdtTimeout)
+    {
+        return 1;
+    }
+
+    return BOOT_ERROR_SUCCESS;
+}

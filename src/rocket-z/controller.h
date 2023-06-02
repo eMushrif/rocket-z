@@ -323,6 +323,14 @@ extern "C"
     uint32_t bootInfo_getFailCount(const struct BootInfo *info);
 
     /**
+     * \brief Set maximum fail count
+     * \param info Pointer to the boot information structure
+     * \param count Maximum fail count
+     * \return 0 on success, BootError on error
+     */
+    void bootInfo_setFailCountMax(struct BootInfo *info, uint32_t count);
+
+    /**
      * \brief Raise fail flag for the currently running image. occurs normally before the app runs.
      * \param info Pointer to the boot information structure
      */
@@ -333,6 +341,16 @@ extern "C"
      * \param info Pointer to the boot information structure
      */
     void bootInfo_failClear(struct BootInfo *info);
+
+    /**
+     * \brief Configure WDT settings. They will take effect after reset. Parameters will not be checked for validity by this function.
+     * \param info Pointer to the boot information structure
+     * \param timeout Watchdog timeout in milliseconds
+     * \param channelCount Number of watchdog channels
+     * \param options Device-specific watchdog options.
+     * \return 0 on success, 1 if successful but settings are different from currently running configs.
+     */
+    int bootInfo_setWdt(struct BootInfo *info, uint32_t timeout, uint32_t channelCount, uint32_t options);
 
     /**
      * \brief Set image name
