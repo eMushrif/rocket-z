@@ -70,6 +70,13 @@ void bootloader_run()
     }
 
 #if 0 // For testing
+    bootInfo_setLoadRequest(&bootInfo->stores[0]);
+    bootInfo_setStore(&bootInfo->stores[0], BOOT_IMG_STORAGE_INTERNAL_FLASH, 0x20000, 0x80000);
+    bootInfo_setHasImage(&bootInfo->stores[0], true);
+
+#endif
+
+#if 0 // For testing
     bootInfo_setStore(&bootInfo->stores[0], BOOT_IMG_STORAGE_INTERNAL_FLASH, 0x20000, 0x20000);
 
     bootInfo_setStore(&bootInfo->stores[2], BOOT_IMG_STORAGE_INTERNAL_FLASH, 0x40000, 0x20000);
@@ -126,7 +133,7 @@ void bootloader_run()
                 continue;
             }
 
-#if 1
+#if 0
             // verify checksum of new image
             verified = appImage_verifyChecksum(&bootInfo->stores[i]);
 
@@ -254,6 +261,7 @@ void bootloader_run()
         {
             bootLog("ERROR: Current image failed to clear fail flags many times (max %d). Rolling back.", bootInfo->failCountMax);
             bootInfo_setHasImage(&bootInfo->appStore, false);
+            bootInfo_failClear(bootInfo);
             rollback();
         }
     }
@@ -396,6 +404,7 @@ void rollback()
 
             bootLog("ERROR: No valid image can be rolled back to.");
 
+            bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
             bootloader_restart();
         }
     }

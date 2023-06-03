@@ -24,6 +24,11 @@ extern "C"
     void bootloader_restart();
 
     /**
+     * @brief Must be implemented externally. Feed all active WDT channel.
+     */
+    void bootloader_wdtFeed();
+
+    /**
      * @brief Must be implemented externally. Jump to app.
      * @param offset Offset to jump to
      */

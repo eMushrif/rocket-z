@@ -54,7 +54,26 @@ int zephyrFlashErase(size_t address, size_t size)
 
 	// allign the erase region with the ROCKETZ_FLASH_BLOCK_SIZE
 	size = size % ROCKETZ_FLASH_BLOCK_SIZE ? size + ROCKETZ_FLASH_BLOCK_SIZE - size % ROCKETZ_FLASH_BLOCK_SIZE : size;
-	return flash_erase(internalFlashDeviceId, address, size);
+
+	int res;
+
+	// do erase in chunks of 8 blocks to prevent WDT triggering
+	for (int i = 0; i < size;)
+	{
+		bootloader_wdtFeed();
+
+		size_t eraseSize = MIN(size - i, ROCKETZ_FLASH_BLOCK_SIZE * 8);
+
+		res = flash_erase(internalFlashDeviceId, address + i, eraseSize);
+		if (res < 0)
+		{
+			return res;
+		}
+
+		i += eraseSize;
+	}
+
+	return res;
 }
 
 int zephyrFlashWrite(size_t address, const void *data, size_t size)
@@ -108,6 +127,22 @@ struct BootFlashDevice *bootInfo_getFlashDevice(enum AppImageStorage storage)
 	}
 }
 
+uint32_t wdtChannelCount;
+uint32_t wdtTimeout;
+uint32_t wdtOptions;
+struct device *wdt_dev;
+
+void bootloader_wdtFeed()
+{
+	if (wdtChannelCount > 0)
+	{
+		for (int i = 0; i < wdtChannelCount; i++)
+		{
+			wdt_feed(wdt_dev, i);
+		}
+	}
+}
+
 #if 0
 void k_sys_fatal_error_handler(unsigned int reason, const z_arch_esf_t *esf)
 {
@@ -146,8 +181,6 @@ void nrf_cleanup()
 	nrf_clock_int_disable(NRF_CLOCK, 0xFFFFFFFF);
 }
 
-const struct device *wdt_dev;
-
 struct wdt_timeout_cfg wdt_settings = {
 	.window = {
 		.min = 0,
@@ -159,16 +192,16 @@ struct wdt_timeout_cfg wdt_settings = {
 void main(void)
 {
 	// Setup WDT
-
-	uint32_t wdtChannelCount = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtChannelCount;
-	uint32_t wdtTimeout = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtTimeout;
-	uint32_t wdtOptions = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtOptions;
+	wdtChannelCount = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtChannelCount;
+	wdtTimeout = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtTimeout;
+	wdtOptions = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtOptions;
 
 	wdt_settings.window.max = wdtTimeout;
 
 	if (wdtChannelCount > 0)
 	{
 		int res;
+
 		wdt_dev = device_get_binding(DT_NODE_FULL_NAME(DT_ALIAS(watchdog0)));
 
 		for (int i = wdtChannelCount; i > 0; i--)

@@ -668,6 +668,8 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
 
         for (; i < fromHeader.encryption.encryptedSize + fromHeader.headerSize; i += blockSize)
         {
+            bootloader_wdtFeed();
+
             size_t sizeAct = MIN(blockSize, fromHeader.encryption.encryptedSize + fromHeader.headerSize - i);
 
             int res = fromDevice->read(fromStore->startAddr + i, cipher, sizeAct);
@@ -712,10 +714,11 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
 
         for (; i < fromHeader.encryption.encryptedSize + fromHeader.headerSize; i += blockSize)
         {
+            bootloader_wdtFeed();
+
             size_t sizeAct = MIN(blockSize, fromHeader.encryption.encryptedSize + fromHeader.headerSize - i);
 
             int res = fromDevice->read(fromStore->startAddr + i, decipher, sizeAct);
-
             if (res <= 0)
             {
                 bootLog("ERROR: Failed to read image data from storage. Error %d.", res);
@@ -756,6 +759,8 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
 
         for (; i < fromHeader.encryption.encryptedSize + fromHeader.headerSize; i += blockSize)
         {
+            bootloader_wdtFeed();
+
             size_t sizeAct = MIN(blockSize, fromHeader.encryption.encryptedSize + fromHeader.headerSize - i);
 
             int res = fromDevice->read(fromStore->startAddr + i, buff, sizeAct);
@@ -868,6 +873,8 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
 
     for (int i = 0; i < header.encryption.encryptedSize; i += ROCKETZ_FLASH_BLOCK_SIZE)
     {
+        bootloader_wdtFeed();
+
         size_t sizeEncrypted = MIN(ROCKETZ_FLASH_BLOCK_SIZE, header.encryption.encryptedSize - i);
         size_t sizeData = MIN(ROCKETZ_FLASH_BLOCK_SIZE, messageOut.size - i);
 
