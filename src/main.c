@@ -196,7 +196,7 @@ void main(void)
 	wdtTimeout = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtTimeout;
 	wdtOptions = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtOptions;
 
-	wdt_settings.window.max = wdtTimeout;
+	wdt_settings.window.max = MAX(wdtTimeout, ROCKETZ_WDT_MIN_TIMEOUT);
 
 	if (wdtChannelCount > 0)
 	{
