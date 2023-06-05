@@ -26,7 +26,7 @@ static const struct device *internalFlashDeviceId;
 
 int zephyrFlashRead(size_t address, void *data, size_t size)
 {
-	if (address + size > ROCKETZ_INTERNAL_FLASH_SIZE)
+	if (address + size > CONFIG_ROCKETZ_INTERNAL_FLASH_SIZE)
 	{
 		return BOOT_ERROR_INVALID_ADDRESS;
 	}
@@ -42,7 +42,7 @@ int zephyrFlashRead(size_t address, void *data, size_t size)
 
 int zephyrFlashErase(size_t address, size_t size)
 {
-	if (address + size > ROCKETZ_INTERNAL_FLASH_SIZE)
+	if (address + size > CONFIG_ROCKETZ_INTERNAL_FLASH_SIZE)
 	{
 		return BOOT_ERROR_INVALID_ADDRESS;
 	}
@@ -52,17 +52,17 @@ int zephyrFlashErase(size_t address, size_t size)
 		return BOOT_ERROR_MEMORY_LOCKED;
 	}
 
-	// allign the erase region with the ROCKETZ_FLASH_BLOCK_SIZE
-	size = size % ROCKETZ_FLASH_BLOCK_SIZE ? size + ROCKETZ_FLASH_BLOCK_SIZE - size % ROCKETZ_FLASH_BLOCK_SIZE : size;
+	// allign the erase region with the CONFIG_ROCKETZ_FLASH_BLOCK_SIZE
+	size = size % CONFIG_ROCKETZ_FLASH_BLOCK_SIZE ? size + CONFIG_ROCKETZ_FLASH_BLOCK_SIZE - size % CONFIG_ROCKETZ_FLASH_BLOCK_SIZE : size;
 
-	int res;
+	int res = 0;
 
 	// do erase in chunks of 8 blocks to prevent WDT triggering
 	for (int i = 0; i < size;)
 	{
 		bootloader_wdtFeed();
 
-		size_t eraseSize = MIN(size - i, ROCKETZ_FLASH_BLOCK_SIZE * 8);
+		size_t eraseSize = MIN(size - i, CONFIG_ROCKETZ_FLASH_BLOCK_SIZE * 8);
 
 		res = flash_erase(internalFlashDeviceId, address + i, eraseSize);
 		if (res < 0)
@@ -78,7 +78,7 @@ int zephyrFlashErase(size_t address, size_t size)
 
 int zephyrFlashWrite(size_t address, const void *data, size_t size)
 {
-	if (address + size > ROCKETZ_INTERNAL_FLASH_SIZE)
+	if (address + size > CONFIG_ROCKETZ_INTERNAL_FLASH_SIZE)
 	{
 		return BOOT_ERROR_INVALID_ADDRESS;
 	}
@@ -89,20 +89,20 @@ int zephyrFlashWrite(size_t address, const void *data, size_t size)
 	}
 
 	// data must be aligned in 4 bytes
-	int actSize = size % ROCKETZ_FLASH_WRITE_ALIGNMENT ? size + ROCKETZ_FLASH_WRITE_ALIGNMENT - size % ROCKETZ_FLASH_WRITE_ALIGNMENT : size;
+	int actSize = size % CONFIG_ROCKETZ_FLASH_WRITE_ALIGNMENT ? size + CONFIG_ROCKETZ_FLASH_WRITE_ALIGNMENT - size % CONFIG_ROCKETZ_FLASH_WRITE_ALIGNMENT : size;
 	int res = flash_write(internalFlashDeviceId, address, data, actSize);
 	return res >= 0 ? actSize : res;
 }
 
 int zephyrFlashLock(size_t address, size_t size, enum BootFlashLockType lockType)
 {
-	if (address + size > ROCKETZ_INTERNAL_FLASH_SIZE)
+	if (address + size > CONFIG_ROCKETZ_INTERNAL_FLASH_SIZE)
 	{
 		return BOOT_ERROR_MEMORY_LOCKED;
 	}
 
 	// round size up to flash block size
-	size = size % ROCKETZ_FLASH_BLOCK_SIZE ? size + ROCKETZ_FLASH_BLOCK_SIZE - size % ROCKETZ_FLASH_BLOCK_SIZE : size;
+	size = size % CONFIG_ROCKETZ_FLASH_BLOCK_SIZE ? size + CONFIG_ROCKETZ_FLASH_BLOCK_SIZE - size % CONFIG_ROCKETZ_FLASH_BLOCK_SIZE : size;
 	return lockType == FLASH_LOCK_WRITE ? fprotect_area(address, size) : fprotect_area_no_access(address, size);
 }
 
@@ -192,11 +192,11 @@ struct wdt_timeout_cfg wdt_settings = {
 void main(void)
 {
 	// Setup WDT
-	wdtChannelCount = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtChannelCount;
-	wdtTimeout = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtTimeout;
-	wdtOptions = ((struct BootInfo *)(ROCKETZ_INFO_ADDR))->wdtOptions;
+	wdtChannelCount = ((struct BootInfo *)(CONFIG_ROCKETZ_INFO_ADDR))->wdtChannelCount;
+	wdtTimeout = ((struct BootInfo *)(CONFIG_ROCKETZ_INFO_ADDR))->wdtTimeout;
+	wdtOptions = ((struct BootInfo *)(CONFIG_ROCKETZ_INFO_ADDR))->wdtOptions;
 
-	wdt_settings.window.max = MAX(wdtTimeout, ROCKETZ_WDT_MIN_TIMEOUT);
+	wdt_settings.window.max = MAX(wdtTimeout, CONFIG_ROCKETZ_WDT_TIMEOUT_MINIMUM);
 
 	if (wdtChannelCount > 0)
 	{

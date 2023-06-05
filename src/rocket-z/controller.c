@@ -13,37 +13,9 @@
 #include <zephyr/sys/crc.h>
 
 #include "config.h"
-
-int unknownFlashRead(size_t address, void *data, size_t size)
-{
-    bootLog("ERROR: Unknown flash device identifier");
-    return BOOT_ERROR_UNKNOWN_DEVICE;
-}
-
-int unknownFlashErase(size_t address, size_t size)
-{
-    bootLog("ERROR: Unknown flash device identifier");
-    return BOOT_ERROR_UNKNOWN_DEVICE;
-}
-
-int unknownFlashWrite(size_t address, const void *data, size_t size)
-{
-    bootLog("ERROR: Unknown flash device identifier");
-    return BOOT_ERROR_UNKNOWN_DEVICE;
-}
-
-int unknownFlashLock(size_t address, size_t size, enum BootFlashLockType lockType)
-{
-    bootLog("ERROR: Unknown flash device identifier");
-    return BOOT_ERROR_UNKNOWN_DEVICE;
-}
-
-struct BootFlashDevice flashDevice_unknown = {
-    .read = unknownFlashRead,
-    .erase = unknownFlashErase,
-    .write = unknownFlashWrite,
-    .lock = unknownFlashLock,
-};
+#include "boot-log.h"
+#include "boot-info-ctrl.h"
+#include "bootloader.h"
 
 enum BootError appImage_readHeader(struct AppImageHeader *header, const struct AppImageStore *store)
 {
@@ -217,7 +189,7 @@ enum BootError appImage_getSignatureMessage(const struct AppImageHeader *header,
 enum BootError appImage_verifySignature(const struct AppImageHeader *imageInfo)
 {
     struct AppImageSignatureMessage messageOut;
-    char messageBuff[ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE];
+    char messageBuff[CONFIG_ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE];
 
     int res = appImage_getSignatureMessage(imageInfo, &messageOut, messageBuff);
 
@@ -319,7 +291,7 @@ enum BootError appImage_verify(const struct AppImageStore *store, const struct B
     }
 
     struct AppImageSignatureMessage messageOut;
-    char messageBuff[ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE];
+    char messageBuff[CONFIG_ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE];
 
     res = appImage_getSignatureMessage(&header, &messageOut, messageBuff);
 
@@ -392,86 +364,13 @@ enum BootError appImage_verify(const struct AppImageStore *store, const struct B
         return BOOT_ERROR_INVALID_SIZE;
     }
 
-    if (messageOut.size > ROCKETZ_MAX_APPIMAGE_SIZE)
+    if (messageOut.size > CONFIG_ROCKETZ_MAX_APPIMAGE_SIZE)
     {
-        bootLog("ERROR: Image %.64s has invalid size of %d; larger than maximum allowed (%d)", header.imageName, messageOut.size, ROCKETZ_MAX_APPIMAGE_SIZE);
+        bootLog("ERROR: Image %.64s has invalid size of %d; larger than maximum allowed (%d)", header.imageName, messageOut.size, CONFIG_ROCKETZ_MAX_APPIMAGE_SIZE);
         return BOOT_ERROR_INVALID_SIZE;
     }
 
     return BOOT_ERROR_SUCCESS;
-}
-
-static int logStartIndex = 0;
-static int logIndex;
-static const struct BootFlashDevice *logFlash;
-
-enum BootError bootLogInit(const struct BootFlashDevice *flash, uint32_t address)
-{
-    logFlash = flash;
-    logIndex = address;
-    logStartIndex = address;
-
-    char buffer[ROCKETZ_FLASH_BLOCK_SIZE];
-
-    int res = logFlash->read(logIndex, buffer, ROCKETZ_FLASH_BLOCK_SIZE);
-
-    if (res < 0)
-    {
-        logStartIndex = 0;
-        return res;
-    }
-
-    for (int i = 0; i < ROCKETZ_FLASH_BLOCK_SIZE; i++)
-    {
-        if (buffer[i] == 0xFF)
-        {
-            logIndex += i;
-            break;
-        }
-    }
-
-    return BOOT_ERROR_SUCCESS;
-}
-
-void bootLog(const char *format, ...)
-{
-    if (logStartIndex == 0)
-        return; // not initialized
-
-    if (logIndex - logStartIndex >= (3 * ROCKETZ_FLASH_BLOCK_SIZE) / 4)
-    {
-        logFlash->erase(logStartIndex, ROCKETZ_FLASH_BLOCK_SIZE);
-        logIndex = logStartIndex;
-    }
-
-    if (logIndex % ROCKETZ_FLASH_WRITE_ALIGNMENT != 0)
-    {
-        // make sure our writing is alligned to 4 bytes
-        uint8_t j[ROCKETZ_FLASH_WRITE_ALIGNMENT];
-
-        logFlash->read(logIndex - logIndex % ROCKETZ_FLASH_WRITE_ALIGNMENT, j, ROCKETZ_FLASH_WRITE_ALIGNMENT);
-        memset(j + logIndex % ROCKETZ_FLASH_WRITE_ALIGNMENT, 0, ROCKETZ_FLASH_WRITE_ALIGNMENT - logIndex % ROCKETZ_FLASH_WRITE_ALIGNMENT);
-
-        int wres = logFlash->write(logIndex - logIndex % ROCKETZ_FLASH_WRITE_ALIGNMENT, j, ROCKETZ_FLASH_WRITE_ALIGNMENT);
-
-        logIndex = logIndex - logIndex % ROCKETZ_FLASH_WRITE_ALIGNMENT + (wres >= 0 ? wres : 0);
-    }
-
-    va_list args;
-    va_start(args, format);
-
-    char buffer[256];
-    memset(buffer, 0x00, sizeof(buffer));
-
-    vsprintf(buffer, format, args);
-
-    va_end(args);
-
-    buffer[sizeof(buffer) - 1] = 0x00; // make sure we have null terminator
-
-    int wres = logFlash->write(logIndex, buffer, strlen(buffer) + 1);
-
-    logIndex += wres >= 0 ? wres : 0;
 }
 
 struct Secret
@@ -502,8 +401,8 @@ enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct A
 
     struct Secret secret;
 
-    bool toAppStore = toStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && toStore->startAddr == ROCKETZ_APP_ADDR;
-    bool fromAppStore = fromStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && fromStore->startAddr == ROCKETZ_APP_ADDR;
+    bool toAppStore = toStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && toStore->startAddr == CONFIG_ROCKETZ_APP_ADDR;
+    bool fromAppStore = fromStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && fromStore->startAddr == CONFIG_ROCKETZ_APP_ADDR;
 
     if (toAppStore || fromAppStore)
     {
@@ -523,7 +422,7 @@ enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct A
     // memcpy(&toStore->imageInfo, &fromStore->imageInfo, sizeof(struct AppImageHeader));
 
     if (NULL != bootInfoBuff)
-        bootInfo_save(ROCKETZ_INFO_ADDR, bootInfoBuff);
+        bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, bootInfoBuff);
 
     res = appImage_transfer_(fromStore, toStore, (toAppStore || fromAppStore) ? &secret : NULL);
 
@@ -538,7 +437,7 @@ enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct A
     bootInfo_setHasImage(toStore, bootInfo_hasImage(fromStore));
 
     if (NULL != bootInfoBuff)
-        bootInfo_save(ROCKETZ_INFO_ADDR, bootInfoBuff);
+        bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, bootInfoBuff);
 
     return 0;
 }
@@ -549,7 +448,7 @@ int getEncryptionKey(const struct AppImageHeader *header, struct Secret *secretO
 
     struct BootFlashDevice *internalFlash = bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH);
 
-    int res = internalFlash->read(ROCKETZ_KEY_ADDR, prv, sizeof(prv));
+    int res = internalFlash->read(CONFIG_ROCKETZ_KEY_ADDR, prv, sizeof(prv));
 
     if (res < 0)
     {
@@ -620,7 +519,7 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
         MIN(fromHeader.encryption.encryptedSize + fromHeader.headerSize, fromStore->maxSize),
         MIN(toHeader.encryption.encryptedSize + toHeader.headerSize, toStore->maxSize));
 
-    eraseSize = MIN(eraseSize, ROCKETZ_MAX_APPIMAGE_SIZE);
+    eraseSize = MIN(eraseSize, CONFIG_ROCKETZ_MAX_APPIMAGE_SIZE);
 
     bootLog("WARNING: Erasing (at least) %d bytes from destination storage", eraseSize);
 
@@ -633,14 +532,14 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
         return res;
     }
 
-    bool toAppStore = toStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && toStore->startAddr == ROCKETZ_APP_ADDR;
-    bool fromAppStore = fromStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && fromStore->startAddr == ROCKETZ_APP_ADDR;
+    bool toAppStore = toStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && toStore->startAddr == CONFIG_ROCKETZ_APP_ADDR;
+    bool fromAppStore = fromStore->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && fromStore->startAddr == CONFIG_ROCKETZ_APP_ADDR;
 
     // one buffer for cipher, decipher including iv
 
-    const size_t blockSize = ROCKETZ_FLASH_BLOCK_SIZE;
+    const size_t blockSize = CONFIG_ROCKETZ_FLASH_BLOCK_SIZE;
 
-    uint8_t buff[ROCKETZ_FLASH_BLOCK_SIZE + (2 * TC_AES_BLOCK_SIZE)];
+    uint8_t buff[CONFIG_ROCKETZ_FLASH_BLOCK_SIZE + (2 * TC_AES_BLOCK_SIZE)];
 
     uint8_t *decipher, *cipher, *_iv;
 
@@ -786,7 +685,7 @@ int appImage_transfer_(const struct AppImageStore *fromStore, const struct AppIm
 
 enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
 {
-    bool isLoadedApp = store->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && store->startAddr == ROCKETZ_APP_ADDR;
+    bool isLoadedApp = store->storage == BOOT_IMG_STORAGE_INTERNAL_FLASH && store->startAddr == CONFIG_ROCKETZ_APP_ADDR;
 
     // get signature message
     struct AppImageSignatureMessage messageOut;
@@ -845,7 +744,7 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
     res = tc_sha256_init(&sha256State);
 
     // block buffer
-    uint8_t buff[ROCKETZ_FLASH_BLOCK_SIZE + (2 * TC_AES_BLOCK_SIZE)];
+    uint8_t buff[CONFIG_ROCKETZ_FLASH_BLOCK_SIZE + (2 * TC_AES_BLOCK_SIZE)];
 
     struct Secret secret;
 
@@ -871,12 +770,12 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
     cipher = buff + (2 * TC_AES_BLOCK_SIZE);
     memcpy(_iv, secret.iv, TC_AES_BLOCK_SIZE);
 
-    for (int i = 0; i < header.encryption.encryptedSize; i += ROCKETZ_FLASH_BLOCK_SIZE)
+    for (int i = 0; i < header.encryption.encryptedSize; i += CONFIG_ROCKETZ_FLASH_BLOCK_SIZE)
     {
         bootloader_wdtFeed();
 
-        size_t sizeEncrypted = MIN(ROCKETZ_FLASH_BLOCK_SIZE, header.encryption.encryptedSize - i);
-        size_t sizeData = MIN(ROCKETZ_FLASH_BLOCK_SIZE, messageOut.size - i);
+        size_t sizeEncrypted = MIN(CONFIG_ROCKETZ_FLASH_BLOCK_SIZE, header.encryption.encryptedSize - i);
+        size_t sizeData = MIN(CONFIG_ROCKETZ_FLASH_BLOCK_SIZE, messageOut.size - i);
 
         res = device->read(store->startAddr + header.headerSize + i, cipher, sizeEncrypted);
 
@@ -936,18 +835,4 @@ enum BootError appImage_verifyChecksum(const struct AppImageStore *store)
     }
 
     return 0;
-}
-
-bool appImage_isCurrent(const struct AppImageHeader *header, const struct BootInfo *bootInfo)
-{
-    struct AppImageHeader appHeader;
-
-    int res = appImage_readHeader(&appHeader, &bootInfo->appStore);
-
-    if (res < 0)
-    {
-        return false;
-    }
-
-    return 0 == memcmp(&appHeader.signatureInfo, &header->signatureInfo, sizeof(appHeader.signatureInfo));
 }

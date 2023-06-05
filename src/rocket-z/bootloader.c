@@ -6,6 +6,7 @@
 #include <tinycrypt/sha256.h>
 
 #include "config.h"
+#include "boot-log.h"
 
 static struct BootFlashDevice *internalFlash;
 struct BootInfoBuffer bootInfoBuffer;
@@ -18,11 +19,11 @@ void bootloader_run()
 
     internalFlash = bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH);
 
-    bootLogInit(internalFlash, ROCKETZ_LOG_ADDR);
+    bootLogInit(internalFlash, CONFIG_ROCKETZ_LOG_ADDR);
 
     bootLog("INFO: Bootloader started");
 
-    bootInfo_load(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+    bootInfo_load(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
 
     struct BootInfo *bootInfo = &bootInfoBuffer.bootInfo;
 
@@ -32,27 +33,36 @@ void bootloader_run()
         bootloader_restart();
     }
 
-#ifdef ROCKETZ_NO_LOCK_HASH
+#ifdef CONFIG_ROCKETZ_NO_LOCK_HASH
 
     // check if memory should be locked for security
 
-    struct tc_sha256_state_struct digestSha;
-
-    tc_sha256_init(&digestSha);
-
-    tc_sha256_update(&digestSha, (const uint8_t *)bootInfo->noLockCode, sizeof(bootInfo->noLockCode));
-
-    uint8_t digest[TC_SHA256_DIGEST_SIZE];
-
-    tc_sha256_final(digest, &digestSha);
-
-    static const uint8_t noLockCodeHash[] = ROCKETZ_NO_LOCK_HASH;
-
-    if (memcmp(digest, noLockCodeHash, sizeof(noLockCodeHash)) == 0)
+    if (strlen(CONFIG_ROCKETZ_NO_LOCK_HASH) > 0)
     {
-        noLock = true;
-        bootLog("WARNING: No-lock code detected");
+        // decode hash
+        uint8_t noLockCodeHash[TC_SHA256_DIGEST_SIZE];
+
+        int len;
+
+        base64_decode(noLockCodeHash, sizeof(noLockCodeHash), &len, CONFIG_ROCKETZ_NO_LOCK_HASH, strlen(CONFIG_ROCKETZ_NO_LOCK_HASH));
+
+        struct tc_sha256_state_struct digestSha;
+
+        tc_sha256_init(&digestSha);
+
+        tc_sha256_update(&digestSha, (const uint8_t *)bootInfo->noLockCode, sizeof(bootInfo->noLockCode));
+
+        uint8_t digest[TC_SHA256_DIGEST_SIZE];
+
+        tc_sha256_final(digest, &digestSha);
+
+        if (memcmp(digest, noLockCodeHash, sizeof(noLockCodeHash)) == 0)
+        {
+            noLock = true;
+            bootLog("WARNING: No-lock code detected");
+        }
     }
+
 #endif
 
     memset(bootInfo->noLockCode, 0, sizeof(bootInfo->noLockCode));
@@ -60,7 +70,7 @@ void bootloader_run()
     if (!noLock)
     {
         // lock bootloadaer memory
-        res = internalFlash->lock(0x0, ROCKETZ_BOOTLOADER_SIZE_MAX, FLASH_LOCK_WRITE);
+        res = internalFlash->lock(0x0, CONFIG_ROCKETZ_BOOTLOADER_SIZE_MAX, FLASH_LOCK_WRITE);
 
         if (res < 0)
         {
@@ -108,7 +118,7 @@ void bootloader_run()
             bootInfo_clearLoadRequest(&bootInfo->stores[i]);
 
             // save boot info
-            bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+            bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
 
             // read image header
 
@@ -133,7 +143,7 @@ void bootloader_run()
                 continue;
             }
 
-#if 0
+#ifdef CONFIG_ROCKETZ_PRELOAD_CHECKSUM
             // verify checksum of new image
             verified = appImage_verifyChecksum(&bootInfo->stores[i]);
 
@@ -162,11 +172,11 @@ void bootloader_run()
         }
     }
 
-    bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+    bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
 
     if (!noLock)
     {
-        res = internalFlash->lock(ROCKETZ_KEY_ADDR, 512, FLASH_LOCK_ALL);
+        res = internalFlash->lock(CONFIG_ROCKETZ_KEY_ADDR, 512, FLASH_LOCK_ALL);
 
         if (res < 0)
         {
@@ -178,8 +188,8 @@ void bootloader_run()
 #if DEBUG_ONLY
     bootInfo_failClear(bootInfo);
     bootInfo_setHasImage(&bootInfo->appStore, true);
-    bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
-    bootloader_jump(ROCKETZ_APP_ADDR + ROCKETZ_DEFAULT_HEADER_SIZE);
+    bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+    bootloader_jump(CONFIG_ROCKETZ_APP_ADDR + CONFIG_ROCKETZ_DEFAULT_HEADER_SIZE);
 #endif
 
     res = appImage_readHeader(&header, &bootInfo->appStore);
@@ -193,7 +203,7 @@ void bootloader_run()
 
     if (!noLock)
     {
-        res = internalFlash->lock(ROCKETZ_APP_ADDR, MIN(ROCKETZ_MAX_APPIMAGE_SIZE, header.encryption.encryptedSize), FLASH_LOCK_WRITE);
+        res = internalFlash->lock(CONFIG_ROCKETZ_APP_ADDR, MIN(CONFIG_ROCKETZ_MAX_APPIMAGE_SIZE, header.encryption.encryptedSize), FLASH_LOCK_WRITE);
 
         if (res < 0)
         {
@@ -206,7 +216,7 @@ void bootloader_run()
     // try read from locked memory
     uint8_t buf[0x10];
 
-    int rres = internalFlash->read(ROCKETZ_KEY_ADDR, buf, 0x10);
+    int rres = internalFlash->read(CONFIG_ROCKETZ_KEY_ADDR, buf, 0x10);
 
     if (rres < 0)
     {
@@ -220,7 +230,7 @@ void bootloader_run()
         bootLog("ERROR: Failed to read from locked memory");
     }
 
-    rres = internalFlash->read(ROCKETZ_APP_ADDR + 512, buf, 0x10);
+    rres = internalFlash->read(CONFIG_ROCKETZ_APP_ADDR + 512, buf, 0x10);
 
     if (rres < 0)
     {
@@ -231,7 +241,7 @@ void bootloader_run()
     buf[1] = 2;
     buf[2] = 3;
 
-    rres = internalFlash->write(ROCKETZ_KEY_ADDR, buf, 0x10);
+    rres = internalFlash->write(CONFIG_ROCKETZ_KEY_ADDR, buf, 0x10);
 
     if (rres < 0)
     {
@@ -245,7 +255,7 @@ void bootloader_run()
         bootLog("ERROR: Failed to read from locked memory");
     }
 
-    rres = internalFlash->write(ROCKETZ_APP_ADDR + 512, buf, 0x10);
+    rres = internalFlash->write(CONFIG_ROCKETZ_APP_ADDR + 512, buf, 0x10);
 
     if (rres < 0)
     {
@@ -295,12 +305,12 @@ void bootloader_run()
 
     bootInfo_setHasImage(&bootInfo->appStore, true);
 
-    bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+    bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
 
     // jump to loaded image
     // copid from ncs\v2.3.0\bootloader\mcuboot\boot\zephyr\main.c
 
-    bootloader_jump(ROCKETZ_APP_ADDR + header.headerSize);
+    bootloader_jump(CONFIG_ROCKETZ_APP_ADDR + header.headerSize);
 }
 
 // select a rollback image
@@ -316,7 +326,7 @@ void rollback()
         // set invalid image
         bootLog("INFO: Same image will be tried again");
         bootInfo_setHasImage(&bootInfo->appStore, false);
-        bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+        bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
         bootloader_restart();
     }
     else
@@ -333,7 +343,7 @@ void rollback()
             bootLog("INFO: Rolling back to image %d:%.64s after restart", bootInfo->rollbackImageIndex, header.imageName);
             bootInfo_setLoadRequest(&bootInfo->stores[bootInfo->rollbackImageIndex]);
             bootInfo->rollbackImageIndex = -1;
-            bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+            bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
             bootloader_restart();
         }
         else
@@ -356,7 +366,7 @@ void rollback()
                     bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                     bootInfo->rollbackImageIndex = -1;
                     bootInfo_setLoadRequest(&bootInfo->stores[i]);
-                    bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+                    bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
                     bootloader_restart();
                 }
             }
@@ -375,7 +385,7 @@ void rollback()
                 bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                 bootInfo->rollbackImageIndex = -1;
                 bootInfo_setLoadRequest(&bootInfo->stores[i]);
-                bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+                bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
                 bootloader_restart();
             }
 
@@ -398,13 +408,13 @@ void rollback()
                 bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                 bootInfo->rollbackImageIndex = -1;
                 bootInfo_setLoadRequest(&bootInfo->stores[i]);
-                bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+                bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
                 bootloader_restart();
             }
 
             bootLog("ERROR: No valid image can be rolled back to.");
 
-            bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+            bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
             bootloader_restart();
         }
     }

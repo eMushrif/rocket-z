@@ -1,5 +1,39 @@
 #include "config.h"
+#include "boot-info-ctrl.h"
 #include "controller.h"
+#include <string.h>
+#include "boot-log.h"
+
+int unknownFlashRead(size_t address, void *data, size_t size)
+{
+    bootLog("ERROR: Unknown flash device identifier");
+    return BOOT_ERROR_UNKNOWN_DEVICE;
+}
+
+int unknownFlashErase(size_t address, size_t size)
+{
+    bootLog("ERROR: Unknown flash device identifier");
+    return BOOT_ERROR_UNKNOWN_DEVICE;
+}
+
+int unknownFlashWrite(size_t address, const void *data, size_t size)
+{
+    bootLog("ERROR: Unknown flash device identifier");
+    return BOOT_ERROR_UNKNOWN_DEVICE;
+}
+
+int unknownFlashLock(size_t address, size_t size, enum BootFlashLockType lockType)
+{
+    bootLog("ERROR: Unknown flash device identifier");
+    return BOOT_ERROR_UNKNOWN_DEVICE;
+}
+
+struct BootFlashDevice flashDevice_unknown = {
+    .read = unknownFlashRead,
+    .erase = unknownFlashErase,
+    .write = unknownFlashWrite,
+    .lock = unknownFlashLock,
+};
 
 struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff)
 {
@@ -34,7 +68,7 @@ struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff)
     }
 
     // make sure appStore parameters are not changed
-    bootInfo_setStore(&info->appStore, BOOT_IMG_STORAGE_INTERNAL_FLASH, ROCKETZ_APP_ADDR, ROCKETZ_MAX_APPIMAGE_SIZE);
+    bootInfo_setStore(&info->appStore, BOOT_IMG_STORAGE_INTERNAL_FLASH, CONFIG_ROCKETZ_APP_ADDR, CONFIG_ROCKETZ_MAX_APPIMAGE_SIZE);
 
     res = bootInfo_save(address, buff);
 
@@ -61,7 +95,7 @@ enum BootError bootInfo_save(uint32_t address, const struct BootInfoBuffer *info
         if (((uint8_t *)&buffer->bootInfo)[i] & ~((uint8_t *)&buffer->bootInfo_orig)[i])
         {
             bootLog("INFO: Erasing boot info for rewrite");
-            bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->erase(address, ROCKETZ_FLASH_BLOCK_SIZE);
+            bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->erase(address, CONFIG_ROCKETZ_FLASH_BLOCK_SIZE);
             break;
         }
     }
@@ -205,9 +239,9 @@ void bootInfo_failClear(struct BootInfo *info)
 
 void bootInfo_setFailCountMax(struct BootInfo *info, uint32_t count)
 {
-    if (count > sizeof(info->failFlags) * 8)
+    if (count >= sizeof(info->failFlags) * 8)
     {
-        return BOOT_ERROR_BAD_ARGUMENT;
+        count = sizeof(info->failFlags) * 8 - 1;
     }
 
     info->failCountMax = count;
@@ -225,4 +259,18 @@ int bootInfo_setWdt(struct BootInfo *info, uint32_t timeout, uint32_t channelCou
     }
 
     return BOOT_ERROR_SUCCESS;
+}
+
+bool appImage_isCurrent(const struct AppImageHeader *header, const struct BootInfo *bootInfo)
+{
+    struct AppImageHeader appHeader;
+
+    int res = appImage_readHeader(&appHeader, &bootInfo->appStore);
+
+    if (res < 0)
+    {
+        return false;
+    }
+
+    return 0 == memcmp(&appHeader.signatureInfo, &header->signatureInfo, sizeof(appHeader.signatureInfo));
 }

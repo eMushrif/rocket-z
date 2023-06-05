@@ -1,6 +1,7 @@
-#include "controller.h"
+
 #include <string.h>
 #include "pem/pem-decode.h"
+#include "header-gen.h"
 
 enum BootError appImage_setName(struct AppImageHeader *header, const char *name)
 {
@@ -16,14 +17,6 @@ void appImage_setHeader(struct AppImageHeader *header, enum AppImageHeaderVersio
 {
     header->headerVersion = version;
     header->headerSize = size;
-}
-
-enum BootError appImage_setStorage(struct AppImageStore *info, size_t address, enum AppImageStorage storage, size_t maxSize)
-{
-    info->startAddr = address;
-    info->storage = storage;
-
-    return BOOT_ERROR_SUCCESS;
 }
 
 enum BootError appImage_setSignature(struct AppImageHeader *header, const char *message, const char *signature, enum BootSignatureVersion version)
