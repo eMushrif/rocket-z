@@ -17,6 +17,7 @@
 #include "rocket-z/config.h"
 #include "arm_cleanup.h"
 #include "rocket-z/config.h"
+#include <zephyr/sys/reboot.h>
 
 #include "nrfx_wdt.h"
 
@@ -130,7 +131,7 @@ struct BootFlashDevice *bootInfo_getFlashDevice(enum AppImageStorage storage)
 uint32_t wdtChannelCount;
 uint32_t wdtTimeout;
 uint32_t wdtOptions;
-struct device *wdt_dev;
+const struct device *wdt_dev;
 
 void bootloader_wdtFeed()
 {
@@ -158,22 +159,12 @@ void k_sys_fatal_error_handler(unsigned int reason, const z_arch_esf_t *esf)
 }
 #endif
 
-#include <nrfx_gpiote.h>
-
 void bootloader_restart()
 {
-	nrfx_gpiote_out_config_t out_config = {
-		.action = NRF_GPIOTE_POLARITY_LOTOHI,
-		.init_state = 1,
-		.task_pin = false,
-	};
-	nrfx_gpiote_out_init(13, &out_config);
+	k_msleep(3000);
 
-	while (true)
-	{
-		nrfx_gpiote_out_toggle(13);
-		k_msleep(500);
-	}
+	// reset the device
+	sys_reboot(SYS_REBOOT_COLD);
 }
 
 void nrf_cleanup()
@@ -192,11 +183,21 @@ struct wdt_timeout_cfg wdt_settings = {
 void main(void)
 {
 	// Setup WDT
-	wdtChannelCount = ((struct BootInfo *)(CONFIG_ROCKETZ_INFO_ADDR))->wdtChannelCount;
-	wdtTimeout = ((struct BootInfo *)(CONFIG_ROCKETZ_INFO_ADDR))->wdtTimeout;
-	wdtOptions = ((struct BootInfo *)(CONFIG_ROCKETZ_INFO_ADDR))->wdtOptions;
+	if (((struct BootInfo *)(CONFIG_ROCKETZ_INFO_ADDR))->version == BOOT_VERSION_0_0)
+	{
+		wdtChannelCount = ((struct BootInfo *)(CONFIG_ROCKETZ_INFO_ADDR))->wdtChannelCount;
+		wdtTimeout = ((struct BootInfo *)(CONFIG_ROCKETZ_INFO_ADDR))->wdtTimeout;
+		wdtOptions = ((struct BootInfo *)(CONFIG_ROCKETZ_INFO_ADDR))->wdtOptions;
 
-	wdt_settings.window.max = MAX(wdtTimeout, CONFIG_ROCKETZ_WDT_TIMEOUT_MINIMUM);
+		if (wdtChannelCount > NRF_WDT_CHANNEL_NUMBER)
+			wdtChannelCount = NRF_WDT_CHANNEL_NUMBER;
+
+		wdt_settings.window.max = MAX(wdtTimeout, CONFIG_ROCKETZ_WDT_TIMEOUT_MINIMUM);
+	}
+	else
+	{
+		wdtChannelCount = 0;
+	}
 
 	if (wdtChannelCount > 0)
 	{
@@ -204,7 +205,7 @@ void main(void)
 
 		wdt_dev = device_get_binding(DT_NODE_FULL_NAME(DT_ALIAS(watchdog0)));
 
-		for (int i = wdtChannelCount; i > 0; i--)
+		for (uint32_t i = wdtChannelCount; i > 0; i--)
 		{
 			res = wdt_install_timeout(wdt_dev, &wdt_settings);
 

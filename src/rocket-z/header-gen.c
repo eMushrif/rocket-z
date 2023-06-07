@@ -2,6 +2,7 @@
 #include <string.h>
 #include "pem/pem-decode.h"
 #include "header-gen.h"
+#include "boot-log.h"
 
 enum BootError appImage_setName(struct AppImageHeader *header, const char *name)
 {

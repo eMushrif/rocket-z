@@ -22,6 +22,14 @@ config ROCKETZ_BOOTLOG
 	default y if ROCKETZ_BOOTLOADER
 	default n
 
+config ROCKETZ_DEBUG
+	bool "Run in debug mode"
+	depends on USING_ROCKETZ
+	default n
+	help
+	  This option allows using debugger with the app.
+	  App image will not be verified upon run.
+
 config ROCKETZ_FLASH_BLOCK_SIZE
 	int "Flash block size"
 	default 4096

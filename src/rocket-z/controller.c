@@ -61,7 +61,7 @@ enum BootError appImage_readHeader(struct AppImageHeader *header, const struct A
 
     if (!isStringsOk)
     {
-        bootLog("ERROR: Image header is invalid or version (%d) is not supported; imageName is longer that it should be", header->headerVersion);
+        bootLog("ERROR: Image header is invalid or version (%d) is not supported; imageName is longer than it should be", header->headerVersion);
         return BOOT_ERROR_TOO_LARGE;
     }
 

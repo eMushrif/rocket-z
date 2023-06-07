@@ -19,8 +19,8 @@
 
 void print_usage()
 {
-    printf("Usage:\n");
-    printf("img-sign {-f file_path | -d base64_sha256_string -s file_size} [-a author_id] [-v variant_pattern] [-k key_file]\n");
+    fprintf(stderr, "Usage:\n");
+    fprintf(stderr, "img-sign {-f file_path | -d base64_sha256_string -s file_size} [-a author_id] [-v variant_pattern] [-k key_file]\n");
 }
 
 EC_KEY *readPrivateKey(char *key_file)
@@ -29,7 +29,7 @@ EC_KEY *readPrivateKey(char *key_file)
     FILE *fp = fopen(key_file, "r");
     if (fp == NULL)
     {
-        printf("Unable to open key file %s\n", key_file);
+        fprintf(stderr, "Unable to open key file %s\n", key_file);
         return NULL;
     }
     key = PEM_read_ECPrivateKey(fp, NULL, NULL, NULL);
@@ -203,8 +203,8 @@ void bootLog(const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    vprintf(fmt, args);
+    vfprintf(stderr, fmt, args);
     va_end(args);
 
-    printf("\n");
+    fprintf(stderr, "\n");
 }

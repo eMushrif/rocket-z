@@ -19,10 +19,10 @@
 
 void print_help()
 {
-    printf("Usage: img-gen -f binary_file -n image_name -s signature_file -k bootloader_public_pem_file [-c bootloader_key_crc32] -o output_file [-u unencrypted_image_output]\n\n");
-    printf("This tool performs cryptographic operations on the input binary file using the provided signature and PEM file.\n\n");
-    printf("Options:\n");
-    printf("  -h, --help    Show this help message and exit.\n");
+    fprintf(stderr, "Usage: img-gen -f binary_file -n image_name -s signature_file -k bootloader_public_pem_file [-c bootloader_key_crc32] -o output_file [-u unencrypted_image_output]\n\n");
+    fprintf(stderr, "This tool performs cryptographic operations on the input binary file using the provided signature and PEM file.\n\n");
+    fprintf(stderr, "Options:\n");
+    fprintf(stderr, "  -h, --help    Show this help message and exit.\n");
 }
 
 #define MAX_LENGTH 1024
@@ -54,10 +54,10 @@ void bootLog(const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    vprintf(fmt, args);
+    vfprintf(stderr, fmt, args);
     va_end(args);
 
-    printf("\n");
+    fprintf(stderr, "\n");
 }
 
 void handleErrors(void)
@@ -229,7 +229,7 @@ int main(int argc, char *argv[])
             crc32 = atoi(optarg);
             break;
         default:
-            printf("Invalid option. %s\n", optarg);
+            fprintf(stderr, "Invalid option. %s\n", optarg);
             print_help();
             return 1;
         }
@@ -239,7 +239,7 @@ int main(int argc, char *argv[])
 
     if (signature == NULL)
     {
-        printf("Failed to open signature file.\n");
+        fprintf(stderr, "Failed to open signature file.\n");
         return 1;
     }
 
@@ -303,7 +303,7 @@ int main(int argc, char *argv[])
 
     if (public_key_file == NULL)
     {
-        printf("Failed to open public key file.\n");
+        fprintf(stderr, "Failed to open public key file.\n");
         return 1;
     }
 
@@ -315,7 +315,7 @@ int main(int argc, char *argv[])
 
     if (read < 0)
     {
-        printf("Could not read file\n");
+        fprintf(stderr, "Could not read file\n");
         return 1;
     }
 
@@ -378,7 +378,7 @@ int main(int argc, char *argv[])
     FILE *file = fopen(file_path, "rb");
     if (!file)
     {
-        printf("Could not open file\n");
+        fprintf(stderr, "Could not open file\n");
         return 1;
     }
 
@@ -393,7 +393,7 @@ int main(int argc, char *argv[])
 
     if (read < 0)
     {
-        printf("Could not read file\n");
+        fprintf(stderr, "Could not read file\n");
         return 1;
     }
 
@@ -419,7 +419,7 @@ int main(int argc, char *argv[])
 
     if (output == NULL)
     {
-        printf("Failed to open output file.\n");
+        fprintf(stderr, "Failed to open output file.\n");
         return 1;
     }
 
@@ -427,7 +427,7 @@ int main(int argc, char *argv[])
 
     if (size != 1)
     {
-        printf("Failed to write header to output file. %i.\n", size);
+        fprintf(stderr, "Failed to write header to output file. %i.\n", size);
         return 1;
     }
 
@@ -435,7 +435,7 @@ int main(int argc, char *argv[])
 
     if (size != 1)
     {
-        printf("Failed to write header data to output file.\n");
+        fprintf(stderr, "Failed to write header data to output file.\n");
         return 1;
     }
 
@@ -444,7 +444,7 @@ int main(int argc, char *argv[])
 
     if (size != 1)
     {
-        printf("Failed to write ciphertext to output file.\n");
+        fprintf(stderr, "Failed to write ciphertext to output file.\n");
         return 1;
     }
 
@@ -457,7 +457,7 @@ int main(int argc, char *argv[])
 
         if (output == NULL)
         {
-            printf("Failed to open output file.\n");
+            fprintf(stderr, "Failed to open output file.\n");
             return 1;
         }
 
@@ -465,7 +465,7 @@ int main(int argc, char *argv[])
 
         if (size != 1)
         {
-            printf("Failed to write header to output file. %i.\n", size);
+            fprintf(stderr, "Failed to write header to output file. %i.\n", size);
             return 1;
         }
 
@@ -473,7 +473,7 @@ int main(int argc, char *argv[])
 
         if (size != 1)
         {
-            printf("Failed to write header data to output file.\n");
+            fprintf(stderr, "Failed to write header data to output file.\n");
             return 1;
         }
 
@@ -482,7 +482,7 @@ int main(int argc, char *argv[])
 
         if (size != 1)
         {
-            printf("Failed to write ciphertext to output file.\n");
+            fprintf(stderr, "Failed to write ciphertext to output file.\n");
             return 1;
         }
     }
