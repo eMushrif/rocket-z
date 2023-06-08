@@ -9,11 +9,7 @@ project(hello_world)
 if(DEFINED CONFIG_ROCKETZ_BOOTLOADER)
 file(GLOB rocketz_src src/rocket-z/*.c src/rocket-z/pem/*.c)
 else()
-if (DEFINED CONFIG_ROCKETZ_BOOTLOG)
 file(GLOB_RECURSE rocketz_src src/boot-info-ctrl.c src/boot-log.c)
-else()
-file(GLOB_RECURSE rocketz_src src/boot-info-ctrl.c)
-endif()
 endif()
 
 target_sources(

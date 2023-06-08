@@ -15,21 +15,12 @@ extern "C"
 #include "structs.h"
 
     /**
-     * \brief Bootloader information buffer. Contains BootInfo and a copy of the original BootInfo.
-     */
-    struct BootInfoBuffer
-    {
-        struct BootInfo bootInfo;
-        struct BootInfo bootInfo_orig;
-    };
-
-    /**
      * \brief Load boot information from flash
      * \param address Address in flash where the boot information is stored
      * \param buff Pointer to the boot information structure output
      * \return Pointer to the boot information structure. Null if the boot information is invalid.
      */
-    struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff);
+    struct BootInfo *bootInfo_load(uint32_t address, struct BootInfo *buff);
 
     /**
      * \brief Save boot information to flash if it has changed
@@ -37,7 +28,7 @@ extern "C"
      * \param info Pointer to the boot information structure buffer
      * \return 0 on success, BootError on error
      */
-    enum BootError bootInfo_save(uint32_t address, const struct BootInfoBuffer *info);
+    enum BootError bootInfo_save(uint32_t address, const struct BootInfo *info);
 
     /**
      * \brief Check if image is the one currently loaded

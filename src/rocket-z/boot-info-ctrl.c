@@ -35,23 +35,20 @@ struct BootFlashDevice flashDevice_unknown = {
     .lock = unknownFlashLock,
 };
 
-struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff)
+struct BootInfo *bootInfo_load(struct BootInfo *buff)
 {
-    struct BootInfo *info = &buff->bootInfo;
+    struct BootInfo *info = buff;
 
     if (NULL == info)
         return NULL;
 
-    int res = bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->read(address, info, sizeof(struct BootInfo));
+    int res = bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->read(CONFIG_ROCKETZ_INFO_ADDR, info, sizeof(struct BootInfo));
 
     if (res < 0)
     {
         bootLog("ERROR: Failed to read boot info from flash");
         return NULL;
     }
-
-    // copy the original boot info to the second half of the buffer
-    memcpy(&buff->bootInfo_orig, &buff->bootInfo, sizeof(struct BootInfo));
 
     if (info->version != BOOT_VERSION_0_0)
     {
@@ -70,7 +67,7 @@ struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff)
     // make sure appStore parameters are not changed
     bootInfo_setStore(&info->appStore, BOOT_IMG_STORAGE_INTERNAL_FLASH, CONFIG_ROCKETZ_APP_ADDR, CONFIG_ROCKETZ_MAX_APPIMAGE_SIZE);
 
-    res = bootInfo_save(address, buff);
+    res = bootInfo_save(buff);
 
     if (res < 0)
     {
@@ -81,18 +78,24 @@ struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff)
     return info;
 }
 
-enum BootError bootInfo_save(uint32_t address, const struct BootInfoBuffer *info)
+enum BootError bootInfo_save(uint32_t address, const struct BootInfo *info)
 {
-    const struct BootInfoBuffer *buffer = (const struct BootInfoBuffer *)info;
+    const struct BootInfo *buffer = info;
+
+    const struct BootInfo buffer_original;
+
+    const uint8_t *address = CONFIG_ROCKETZ_INFO_ADDR;
+
+    bootInfo_load(&buffer_original);
 
     // if info is the same as the one in flash, don't write it
-    if (memcmp(&buffer->bootInfo, &buffer->bootInfo_orig, sizeof(struct BootInfo)) == 0)
+    if (memcmp(buffer, &buffer_original, sizeof(struct BootInfo)) == 0)
         return BOOT_ERROR_SUCCESS;
 
     // if any bits were changed from 0 to 1, erase the flash page
     for (int i = 0; i < sizeof(struct BootInfo); i++)
     {
-        if (((uint8_t *)&buffer->bootInfo)[i] & ~((uint8_t *)&buffer->bootInfo_orig)[i])
+        if (((uint8_t *)buffer)[i] & ~((uint8_t *)&buffer_original)[i])
         {
             bootLog("INFO: Erasing boot info for rewrite");
             bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->erase(address, CONFIG_ROCKETZ_FLASH_BLOCK_SIZE);
@@ -103,11 +106,10 @@ enum BootError bootInfo_save(uint32_t address, const struct BootInfoBuffer *info
     bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->write(address, info, sizeof(struct BootInfo));
 
     // double check that the write was successful
-    // copy the updated boot info to the second half of the buffer
-    memcpy((struct BootInfo *)(&buffer->bootInfo_orig), &buffer->bootInfo, sizeof(struct BootInfo));
 
-    bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->read(address, (struct BootInfo *)(&buffer->bootInfo), sizeof(struct BootInfo));
-    if (memcmp(&buffer->bootInfo_orig, &buffer->bootInfo, sizeof(struct BootInfo)) != 0)
+    bootInfo_load(&buffer_original);
+
+    if (memcmp(&buffer_original, buffer, sizeof(struct BootInfo)) != 0)
     {
         // data wasn't written correctly. erase and write again
         bootLog("INFO: Erasing boot info for rewrite");
@@ -115,8 +117,9 @@ enum BootError bootInfo_save(uint32_t address, const struct BootInfoBuffer *info
         bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->write(address, info, sizeof(struct BootInfo));
     }
 
-    bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->read(address, (struct BootInfo *)(&buffer->bootInfo), sizeof(struct BootInfo));
-    if (memcmp(&buffer->bootInfo_orig, &buffer->bootInfo, sizeof(struct BootInfo)) != 0)
+    bootInfo_load(&buffer_original);
+
+    if (memcmp(&buffer_original, buffer, sizeof(struct BootInfo)) != 0)
     {
         return BOOT_ERROR_UNKNOWN;
     }
