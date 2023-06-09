@@ -9,7 +9,7 @@
 #include "boot-log.h"
 
 static struct BootFlashDevice *internalFlash;
-struct BootInfoBuffer bootInfoBuffer;
+struct BootInfo bootInfoBuffer;
 
 bool noLock = false;
 
@@ -23,9 +23,21 @@ void bootloader_run()
 
     bootLog("INFO: Bootloader started");
 
-    bootInfo_load(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+    bootInfo_load(&bootInfoBuffer);
 
-    struct BootInfo *bootInfo = &bootInfoBuffer.bootInfo;
+    // initialize the bootInfo in case it was not initialized
+    bootInfo_init(&bootInfoBuffer);
+
+    // save boot info in case it was just initialized
+    res = bootInfo_save(&bootInfoBuffer);
+
+    if (res < 0)
+    {
+        bootLog("ERROR: Failed to update boot into from flash");
+        return NULL;
+    }
+
+    struct BootInfo *bootInfo = &bootInfoBuffer;
 
     if (bootInfo->version != BOOT_VERSION_0_0)
     {
@@ -118,7 +130,7 @@ void bootloader_run()
             bootInfo_clearLoadRequest(&bootInfo->stores[i]);
 
             // save boot info
-            bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+            bootInfo_save(&bootInfoBuffer);
 
             // read image header
 
@@ -172,7 +184,7 @@ void bootloader_run()
         }
     }
 
-    bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+    bootInfo_save(&bootInfoBuffer);
 
     if (!noLock)
     {
@@ -188,7 +200,7 @@ void bootloader_run()
 #ifdef CONFIG_ROCKETZ_DEBUG
     bootInfo_failClear(bootInfo);
     bootInfo_setHasImage(&bootInfo->appStore, true);
-    bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+    bootInfo_save(&bootInfoBuffer);
     bootloader_jump(CONFIG_ROCKETZ_APP_ADDR + CONFIG_ROCKETZ_DEFAULT_HEADER_SIZE);
 #endif
 
@@ -305,7 +317,7 @@ void bootloader_run()
 
     bootInfo_setHasImage(&bootInfo->appStore, true);
 
-    bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+    bootInfo_save(&bootInfoBuffer);
 
     // jump to loaded image
     // copid from ncs\v2.3.0\bootloader\mcuboot\boot\zephyr\main.c
@@ -319,14 +331,14 @@ void bootloader_run()
 // should restart the system after calling this function
 void rollback()
 {
-    struct BootInfo *bootInfo = &bootInfoBuffer.bootInfo;
+    struct BootInfo *bootInfo = &bootInfoBuffer;
 
     if (bootInfo_hasImage(&bootInfo->appStore))
     {
         // set invalid image
         bootLog("INFO: Same image will be tried again");
         bootInfo_setHasImage(&bootInfo->appStore, false);
-        bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+        bootInfo_save(&bootInfoBuffer);
         bootloader_restart();
     }
     else
@@ -343,7 +355,7 @@ void rollback()
             bootLog("INFO: Rolling back to image %d:%.64s after restart", bootInfo->rollbackImageIndex, header.imageName);
             bootInfo_setLoadRequest(&bootInfo->stores[bootInfo->rollbackImageIndex]);
             bootInfo->rollbackImageIndex = -1;
-            bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+            bootInfo_save(&bootInfoBuffer);
             bootloader_restart();
         }
         else
@@ -366,7 +378,7 @@ void rollback()
                     bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                     bootInfo->rollbackImageIndex = -1;
                     bootInfo_setLoadRequest(&bootInfo->stores[i]);
-                    bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+                    bootInfo_save(&bootInfoBuffer);
                     bootloader_restart();
                 }
             }
@@ -385,7 +397,7 @@ void rollback()
                 bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                 bootInfo->rollbackImageIndex = -1;
                 bootInfo_setLoadRequest(&bootInfo->stores[i]);
-                bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+                bootInfo_save(&bootInfoBuffer);
                 bootloader_restart();
             }
 
@@ -408,13 +420,13 @@ void rollback()
                 bootLog("INFO: Rolling back to image %d:%.64s after restart", i, header.imageName);
                 bootInfo->rollbackImageIndex = -1;
                 bootInfo_setLoadRequest(&bootInfo->stores[i]);
-                bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+                bootInfo_save(&bootInfoBuffer);
                 bootloader_restart();
             }
 
             bootLog("ERROR: No valid image can be rolled back to.");
 
-            bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, &bootInfoBuffer);
+            bootInfo_save(&bootInfoBuffer);
             bootloader_restart();
         }
     }

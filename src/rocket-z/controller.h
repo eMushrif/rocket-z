@@ -69,7 +69,7 @@ extern "C"
      * \param bootInfoBuff Optional. Pointer to the boot information structure. if not NULL bootInfo will be saved automatically.
      * \return 0 on success, BootError on error
      */
-    enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfoBuffer *bootInfoBuff);
+    enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfo *bootInfoBuff);
 
     /**
      * \brief Get the signature message data for an image

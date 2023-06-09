@@ -380,7 +380,7 @@ struct Secret
     struct tc_aes_key_sched_struct sched;
 };
 
-enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfoBuffer *bootInfoBuff)
+enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct AppImageStore *toStore, struct BootInfo *bootInfoBuff)
 {
     // read image header
     struct AppImageHeader header;
@@ -422,7 +422,7 @@ enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct A
     // memcpy(&toStore->imageInfo, &fromStore->imageInfo, sizeof(struct AppImageHeader));
 
     if (NULL != bootInfoBuff)
-        bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, bootInfoBuff);
+        bootInfo_save(bootInfoBuff);
 
     res = appImage_transfer_(fromStore, toStore, (toAppStore || fromAppStore) ? &secret : NULL);
 
@@ -437,7 +437,7 @@ enum BootError appImage_transfer(const struct AppImageStore *fromStore, struct A
     bootInfo_setHasImage(toStore, bootInfo_hasImage(fromStore));
 
     if (NULL != bootInfoBuff)
-        bootInfo_save(CONFIG_ROCKETZ_INFO_ADDR, bootInfoBuff);
+        bootInfo_save(bootInfoBuff);
 
     return 0;
 }

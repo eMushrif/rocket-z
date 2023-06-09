@@ -50,6 +50,11 @@ struct BootInfo *bootInfo_load(struct BootInfo *buff)
         return NULL;
     }
 
+    return info;
+}
+
+enum BootError bootInfo_init(struct BootInfo *info)
+{
     if (info->version != BOOT_VERSION_0_0)
     {
         // Boot information not loaded, or different version. Reset info.
@@ -67,18 +72,10 @@ struct BootInfo *bootInfo_load(struct BootInfo *buff)
     // make sure appStore parameters are not changed
     bootInfo_setStore(&info->appStore, BOOT_IMG_STORAGE_INTERNAL_FLASH, CONFIG_ROCKETZ_APP_ADDR, CONFIG_ROCKETZ_MAX_APPIMAGE_SIZE);
 
-    res = bootInfo_save(buff);
-
-    if (res < 0)
-    {
-        bootLog("ERROR: Failed to update boot into from flash");
-        return NULL;
-    }
-
-    return info;
+    return BOOT_ERROR_SUCCESS;
 }
 
-enum BootError bootInfo_save(uint32_t address, const struct BootInfo *info)
+enum BootError bootInfo_save(const struct BootInfo *info)
 {
     const struct BootInfo *buffer = info;
 
@@ -115,6 +112,10 @@ enum BootError bootInfo_save(uint32_t address, const struct BootInfo *info)
         bootLog("INFO: Erasing boot info for rewrite");
         bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->erase(address, sizeof(struct BootInfo));
         bootInfo_getFlashDevice(BOOT_IMG_STORAGE_INTERNAL_FLASH)->write(address, info, sizeof(struct BootInfo));
+    }
+    else
+    {
+        return BOOT_ERROR_SUCCESS;
     }
 
     bootInfo_load(&buffer_original);
