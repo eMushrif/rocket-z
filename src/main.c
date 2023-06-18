@@ -23,7 +23,125 @@
 
 #include "rocket-z/bootloader.h"
 
+#define FLASH_DEVICE DT_LABEL(DT_INST(0, nordic_qspi_nor))
+
 static const struct device *internalFlashDeviceId;
+static const struct device *externalFlashDeviceId;
+
+int zephyrFlashReadExt(size_t address, void *data, size_t size)
+{
+	if (!device_is_ready(externalFlashDeviceId))
+	{
+		return BOOT_ERROR_UNKNOWN_DEVICE;
+	}
+
+	else
+	{
+		if (address + size > CONFIG_ROCKETZ_EXTERNAL_FLASH_SIZE)
+		{
+			return BOOT_ERROR_INVALID_ADDRESS;
+		}
+
+		if (fprotect_is_protected(address) & 2)
+		{
+			return BOOT_ERROR_MEMORY_LOCKED;
+		}
+
+		int res = flash_read(externalFlashDeviceId, address, data, size);
+		return res >= 0 ? size : res;
+	}
+}
+
+int zephyrFlashEraseExt(size_t address, size_t size)
+{
+	if (!device_is_ready(externalFlashDeviceId))
+	{
+		return BOOT_ERROR_UNKNOWN_DEVICE;
+	}
+
+	else
+	{
+		if (address + size > CONFIG_ROCKETZ_EXTERNAL_FLASH_SIZE)
+		{
+			return BOOT_ERROR_INVALID_ADDRESS;
+		}
+
+		if (fprotect_is_protected(address) & 1)
+		{
+			return BOOT_ERROR_MEMORY_LOCKED;
+		}
+
+		// allign the erase region with the ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE
+		size = size % ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE ? size + ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE - size % ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE : size;
+
+		int res = 0;
+
+		// do erase in chunks of 8 blocks to prevent WDT triggering
+		for (int i = 0; i < size;)
+		{
+			bootloader_wdtFeed();
+
+			size_t eraseSize = MIN(size - i, ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE * 8);
+
+			res = flash_erase(externalFlashDeviceId, address + i, eraseSize);
+			if (res < 0)
+			{
+				return res;
+			}
+
+			i += eraseSize;
+		}
+
+		return res;
+	}
+}
+
+int zephyrFlashWriteExt(size_t address, const void *data, size_t size)
+{
+	if (!device_is_ready(externalFlashDeviceId))
+	{
+		return BOOT_ERROR_UNKNOWN_DEVICE;
+	}
+
+	else
+	{
+		if (address + size > CONFIG_ROCKETZ_EXTERNAL_FLASH_SIZE)
+		{
+			return BOOT_ERROR_INVALID_ADDRESS;
+		}
+
+		if (fprotect_is_protected(address) & 1)
+		{
+			return BOOT_ERROR_MEMORY_LOCKED;
+		}
+
+		// data must be aligned in 4 bytes
+		int actSize = size % ROCKETZ_EXTERNAL_FLASH_WRITE_ALIGNMENT ? size + ROCKETZ_EXTERNAL_FLASH_WRITE_ALIGNMENT - size % ROCKETZ_EXTERNAL_FLASH_WRITE_ALIGNMENT : size;
+
+		int res = flash_write(externalFlashDeviceId, address, data, actSize);
+		return res >= 0 ? size : res;
+	}
+}
+
+int zephyrFlashLockExt(size_t address, size_t size, enum BootFlashLockType lockType)
+{
+	if (!device_is_ready(externalFlashDeviceId))
+	{
+		return BOOT_ERROR_UNKNOWN_DEVICE;
+	}
+
+	else
+	{
+		if (address + size > CONFIG_ROCKETZ_EXTERNAL_FLASH_SIZE)
+		{
+			return BOOT_ERROR_MEMORY_LOCKED;
+		}
+
+		// round size up to flash block size
+		size = size % ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE ? size + ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE - size % ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE : size;
+		return lockType == FLASH_LOCK_WRITE ? fprotect_area(address, size) : fprotect_area_no_access(address, size);
+	}
+}
 
 int zephyrFlashRead(size_t address, void *data, size_t size)
 {
@@ -114,12 +232,23 @@ struct BootFlashDevice flashDevice_internalFlash = {
 	.lock = zephyrFlashLock,
 };
 
+struct BootFlashExtDevice flashDevice_externalFlash = {
+	.read = zephyrFlashReadExt,
+	.erase = zephyrFlashEraseExt,
+	.write = zephyrFlashWriteExt,
+	.lock = zephyrFlashLockExt,
+};
+
 struct BootFlashDevice *bootInfo_getFlashDevice(enum AppImageStorage storage)
 {
 	switch (storage)
 	{
 	case BOOT_IMG_STORAGE_INTERNAL_FLASH:
 		return &flashDevice_internalFlash;
+		break;
+
+	case BOOT_IMG_STORAGE_EXTERNAL_FLASH:
+		return &flashDevice_externalFlash;
 		break;
 
 	default:
@@ -233,6 +362,7 @@ void main(void)
 #endif
 
 	internalFlashDeviceId = device_get_binding(DT_NODE_FULL_NAME(DT_CHOSEN(zephyr_flash_controller)));
+	externalFlashDeviceId = device_get_binding(FLASH_DEVICE);
 
 	bootloader_run();
 

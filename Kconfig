@@ -37,12 +37,26 @@ config ROCKETZ_FLASH_BLOCK_SIZE
 	help
 	  The size of the flash block in bytes.
 
+config ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE
+	int "External flash block size"
+	default 65536
+	depends on USING_ROCKETZ
+	help
+	  The size of the extrenal flash block in bytes.
+
 config ROCKETZ_FLASH_WRITE_ALIGNMENT
 	int "Flash write alignment"
 	default 4
 	depends on USING_ROCKETZ
 	help
 	  The alignment of the flash write in bytes.
+
+config ROCKETZ_EXTERNAL_FLASH_WRITE_ALIGNMENT
+	int "External flash write alignment"
+	default 4
+	depends on USING_ROCKETZ
+	help
+	  The alignment of the external flash write in bytes.
 
 config ROCKETZ_APP_ADDR
 	hex "Application address"
@@ -64,6 +78,13 @@ config ROCKETZ_INTERNAL_FLASH_SIZE
 	depends on USING_ROCKETZ
 	help
 	  The size of the code space in bytes.
+
+config CONFIG_ROCKETZ_EXTERNAL_FLASH_SIZE
+	int "External flash size"
+	default 134217728 # 128MB
+	depends on USING_ROCKETZ
+	help
+		The size of the external flash in bytes.
 
 config ROCKETZ_MAX_APPIMAGE_SIZE
 	int "Maximum application image size"
