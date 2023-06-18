@@ -72,7 +72,7 @@ int zephyrFlashEraseExt(size_t address, size_t size)
 		}
 
 		// allign the erase region with the ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE
-		size = size % ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE ? size + ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE - size % ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE : size;
+		size = size % CONFIG_ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE ? size + CONFIG_ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE - size % CONFIG_ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE : size;
 
 		int res = 0;
 
@@ -81,7 +81,7 @@ int zephyrFlashEraseExt(size_t address, size_t size)
 		{
 			bootloader_wdtFeed();
 
-			size_t eraseSize = MIN(size - i, ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE * 8);
+			size_t eraseSize = MIN(size - i, CONFIG_ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE * 8);
 
 			res = flash_erase(externalFlashDeviceId, address + i, eraseSize);
 			if (res < 0)
@@ -116,7 +116,7 @@ int zephyrFlashWriteExt(size_t address, const void *data, size_t size)
 		}
 
 		// data must be aligned in 4 bytes
-		int actSize = size % ROCKETZ_EXTERNAL_FLASH_WRITE_ALIGNMENT ? size + ROCKETZ_EXTERNAL_FLASH_WRITE_ALIGNMENT - size % ROCKETZ_EXTERNAL_FLASH_WRITE_ALIGNMENT : size;
+		int actSize = size % CONFIG_ROCKETZ_EXTERNAL_FLASH_WRITE_ALIGNMENT ? size + CONFIG_ROCKETZ_EXTERNAL_FLASH_WRITE_ALIGNMENT - size % CONFIG_ROCKETZ_EXTERNAL_FLASH_WRITE_ALIGNMENT : size;
 
 		int res = flash_write(externalFlashDeviceId, address, data, actSize);
 		return res >= 0 ? size : res;
@@ -138,7 +138,7 @@ int zephyrFlashLockExt(size_t address, size_t size, enum BootFlashLockType lockT
 		}
 
 		// round size up to flash block size
-		size = size % ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE ? size + ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE - size % ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE : size;
+		size = size % CONFIG_ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE ? size + CONFIG_ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE - size % CONFIG_ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE : size;
 		return lockType == FLASH_LOCK_WRITE ? fprotect_area(address, size) : fprotect_area_no_access(address, size);
 	}
 }

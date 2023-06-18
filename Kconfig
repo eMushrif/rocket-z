@@ -79,7 +79,7 @@ config ROCKETZ_INTERNAL_FLASH_SIZE
 	help
 	  The size of the code space in bytes.
 
-config CONFIG_ROCKETZ_EXTERNAL_FLASH_SIZE
+config ROCKETZ_EXTERNAL_FLASH_SIZE
 	int "External flash size"
 	default 134217728 # 128MB
 	depends on USING_ROCKETZ

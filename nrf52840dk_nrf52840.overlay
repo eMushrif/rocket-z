@@ -34,23 +34,6 @@
         jedec-id = [ ef 70 18  ];
     };
 };
-
-/delete-node/ &qspi;
-
-&spi2 {
-    compatible = "nordic,nrf-spim";
-    status = "okay";
-    cs-gpios = <&gpio1 8 GPIO_ACTIVE_LOW>;
-
-    w25q128jv: w25q128jv@0 {
-        compatible = "jedec,spi-nor";
-        reg = <0>;
-        spi-max-frequency = <50000000>;
-        size = <134217728>;
-        jedec-id = [ ef 70 18  ];
-    };
-};
-
 &pinctrl {
     qspi_default: qspi_default {
         group1 {

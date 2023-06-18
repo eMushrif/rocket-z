@@ -171,6 +171,15 @@ struct BootFlashDevice
     int (*lock)(size_t address, size_t size, enum BootFlashLockType lockType); //< Optional. If not provided, will be used for internal flash only.
 };
 
+struct BootFlashExtDevice
+{
+    int (*read)(size_t address, void *data, size_t size);
+    int (*erase)(size_t address, size_t size);
+    int (*write)(size_t address, const void *data, size_t size);
+    int (*lock)(size_t address, size_t size, enum BootFlashLockType lockType); //< Optional. If not provided, will be used for external flash only.
+};
+
 extern struct BootFlashDevice flashDevice_unknown;
+extern struct BootFlashExtDevice flashExtDevice_unknown;
 
 #endif // STRUCTS_H
