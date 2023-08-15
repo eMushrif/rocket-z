@@ -31,7 +31,7 @@
         size = <134217728>;
         readoc = "read4io";
         writeoc = "pp4o";
-        address-size-32;
+        quad-enable-requirements = "S2B1v1";
         jedec-id = [ ef 70 18  ];
     };
 };
