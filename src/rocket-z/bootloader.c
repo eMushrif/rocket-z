@@ -93,7 +93,8 @@ void bootloader_run()
 
     for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
     {
-        if (bootInfo_hasLoadRequest(&bootInfo->stores[i]))
+         if (bootInfo_hasImage(&bootInfo->stores[i]) && bootInfo_hasLoadRequest(&bootInfo->stores[i]))
+
         {
             bootLog("INFO: Store #%d has load request", i);
 
@@ -168,7 +169,7 @@ void bootloader_run()
         }
     }
 
-#if DEBUG_ONLY
+#if 1 || DEBUG_ONLY
     bootInfo_failClear(bootInfo);
     bootInfo_setHasImage(&bootInfo->appStore, true);
     bootInfo_save(ROCKETZ_INFO_ADDR, &bootInfoBuffer);

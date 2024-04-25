@@ -31,6 +31,10 @@ struct BootInfo *bootInfo_load(uint32_t address, struct BootInfoBuffer *buff)
         info->version = BOOT_VERSION_0_0;
         info->rollbackImageIndex = -1;
         info->wdtChannelCount = 0;
+		
+		info->appStore.storage = BOOT_IMG_STORAGE_INTERNAL_FLASH;
+		info->appStore.startAddr = ROCKETZ_APP_ADDR;
+		info->appStore.maxSize = ROCKETZ_MAX_APPIMAGE_SIZE;
     }
 
     // make sure appStore parameters are not changed
