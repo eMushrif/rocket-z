@@ -1,0 +1,176 @@
+mainmenu "Rocketz configuration"
+
+comment "Rocketz configuration options"
+
+source "$(ZEPHYR_BASE)/Kconfig"
+
+
+# Actual default values for RocketZ are in config.h
+
+config USING_ROCKETZ
+    bool "App is using Rocketz as a bootloader"
+	default y
+
+config ROCKETZ_BOOTLOADER
+	bool "Build Rocketz bootloader"
+	depends on USING_ROCKETZ
+	default n
+
+config ROCKETZ_BOOTLOG
+	bool "Enable boot logs"
+	depends on USING_ROCKETZ
+	default y if ROCKETZ_BOOTLOADER
+	default n
+
+config ROCKETZ_DEBUG
+	bool "Run in debug mode"
+	depends on USING_ROCKETZ
+	default n
+	help
+	  This option allows using debugger with the app.
+	  App image will not be verified upon run.
+
+config ROCKETZ_FLASH_BLOCK_SIZE
+	int "Flash block size"
+	default 4096
+	depends on USING_ROCKETZ
+	help
+	  The size of the flash block in bytes.
+
+config ROCKETZ_EXTERNAL_FLASH_BLOCK_SIZE
+	int "External flash block size"
+	default 65536
+	depends on USING_ROCKETZ
+	help
+	  The size of the extrenal flash block in bytes.
+
+config ROCKETZ_FLASH_WRITE_ALIGNMENT
+	int "Flash write alignment"
+	default 4
+	depends on USING_ROCKETZ
+	help
+	  The alignment of the flash write in bytes.
+
+config ROCKETZ_EXTERNAL_FLASH_WRITE_ALIGNMENT
+	int "External flash write alignment"
+	default 4
+	depends on USING_ROCKETZ
+	help
+	  The alignment of the external flash write in bytes.
+
+config ROCKETZ_APP_ADDR
+	hex "Application address"
+	default 0x10000
+	depends on USING_ROCKETZ
+	help
+	  The address of the application in flash.
+
+config ROCKETZ_DEFAULT_HEADER_SIZE
+	int "Default image header size"
+	default 1024
+	depends on USING_ROCKETZ
+	help
+	  The default header size in bytes.
+
+config ROCKETZ_INTERNAL_FLASH_SIZE
+	int "Internal flash size"
+	default 1048576 # 1MB
+	depends on USING_ROCKETZ
+	help
+	  The size of the code space in bytes.
+
+config ROCKETZ_EXTERNAL_FLASH_SIZE
+	int "External flash size"
+	default 134217728 # 128MB
+	depends on USING_ROCKETZ
+	help
+		The size of the external flash in bytes.
+
+config ROCKETZ_MAX_APPIMAGE_SIZE
+	int "Maximum application image size"
+	default 983040
+	depends on USING_ROCKETZ
+	help
+	  The maximum size of the application image in bytes.
+	  Must be less than or equal to the internal internal flash size - 3 * flash block size.
+
+config ROCKETZ_INFO_ADDR
+	hex "Boot info address"
+	default 0xF000
+	depends on USING_ROCKETZ
+	help
+	  The address of the boot info in flash. This info will be used to provide image information to bootloader and other startup configurations.
+	  It spans 1 flash block.
+
+config ROCKETZ_LOG_ADDR
+	hex "Boot-log address"
+	default 0xE000
+	depends on USING_ROCKETZ
+	help
+	  The address of the boot logs in flash.
+	  Bootloader will store a sequence of null-terminated strings in this region which spans 1 flash block.
+	  These strings contain information, warning and error messages.
+
+config ROCKETZ_KEY_ADDR
+	hex "Bootloader private key address"
+	default 0xD000
+	depends on USING_ROCKETZ
+	help
+	  The address of the key in flash.
+	  Bootloader will store a sequence of bytes in this region which spans 1 flash block.
+	  These bytes contain the key used to encrypt the application image.
+
+config ROCKETZ_BOOTLOADER_SIZE_MAX
+	int "Maximum bootloader size"
+	default 53248 # 0xD000
+	depends on USING_ROCKETZ
+	help
+	  The maximum size of the bootloader code in bytes. Doesn't include boot-info, logs and key regions.
+
+config ROCKETZ_NO_LOCK_HASH
+	string "base64 SHA-256 of no-lock secret code"
+	default ""
+	help
+	  A secret code can be stored in boot-info region to prevent bootloader from locking the flash.
+
+config ROCKETZ_WDT_TIMEOUT_MINIMUM
+	int "Minimum watchdog timeout period"
+	default 3000
+	depends on USING_ROCKETZ
+	help
+	  The minimum watchdog timeout in milliseconds.
+
+config ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE
+	int "Maximum signature message size"
+	default 512
+	depends on USING_ROCKETZ
+	help
+	  The maximum size of the signature message string in bytes.
+
+config ROCKETZ_PRELOAD_CHECKSUM
+	bool "Preload checksum"
+	default n
+	depends on USING_ROCKETZ
+	help
+	  Verify the integrity of the application image before loading it. This options adds safety but also increases the boot time.
+
+config CLEANUP_ARM_CORE
+	bool "Perform core cleanup before chain-load the application"
+	default y
+	depends on USING_ROCKETZ
+	help
+	  This option instructs bootloader to perform a clean-up of a set of
+	  architecture core HW registers before junping to the application
+	  firmware. The clean-up sets these registers to their warm-reset
+	  values as specified by the architecture.
+
+	  This option is enabled by default to prevent possible problems when
+	  booting zephyr (or other) applications whereby e.g. a MPU stack guard
+	  may be initialised in RAM which is then used by the application
+	  start-up code which can cause a module fault and potentially make the
+	  module irrecoverable.
+
+config NRF_CLEANUP_PERIPHERAL
+	bool "Perform peripheral cleanup before chain-load the application"
+	default y
+	depends on USING_ROCKETZ
