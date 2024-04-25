@@ -198,12 +198,13 @@ void bootloader_run()
         }
     }
 
-#ifdef CONFIG_ROCKETZ_DEBUG
+if (CONFIG_ROCKETZ_DEBUG || !bootloader_isAppSecure())
+{
     bootInfo_failClear(bootInfo);
     bootInfo_setHasImage(&bootInfo->appStore, true);
     bootInfo_save(&bootInfoBuffer);
     bootloader_jump(CONFIG_ROCKETZ_APP_ADDR + CONFIG_ROCKETZ_DEFAULT_HEADER_SIZE);
-#endif
+}
 
     res = appImage_readHeader(&header, &bootInfo->appStore);
 

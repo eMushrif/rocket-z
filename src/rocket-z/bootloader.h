@@ -24,9 +24,14 @@ extern "C"
     void bootloader_restart();
 
     /**
-     * @brief Must be implemented externally. Feed all active WDT channel.
+     * @brief Must be implemented externally. Feed all active WDT channels.
      */
     void bootloader_wdtFeed();
+	
+	/**
+     * @brief Must be implemented externally. Whether signature should be verified before running the app. Can be set to "false" if in debugging mode.
+     */
+    bool bootloader_isAppSecure();
 
     /**
      * @brief Must be implemented externally. Jump to app.

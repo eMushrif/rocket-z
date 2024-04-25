@@ -262,6 +262,11 @@ uint32_t wdtTimeout;
 uint32_t wdtOptions;
 const struct device *wdt_dev;
 
+bool bootloader_isAppSecure()
+{
+	return true;
+}
+
 void bootloader_wdtFeed()
 {
 	if (wdtChannelCount > 0)
