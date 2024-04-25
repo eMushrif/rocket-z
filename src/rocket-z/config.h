@@ -12,8 +12,9 @@
 
 #ifdef CONFIG_BOARD_NRF52833DK_NRF52833
 
+#elif defined(CONFIG_IMG_GEN)
 #else
-//#error "Board not supported"
+#error "Board not supported"
 #endif
 
 #ifndef CONFIG_ROCKETZ_SIGNATURE_MESSAGE_MAX_SIZE

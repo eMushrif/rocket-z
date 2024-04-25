@@ -148,6 +148,8 @@ int main(int argc, char **argv)
         // get file size
         fseek(file, 0L, SEEK_END);
         size = ftell(file);
+		
+		fclose(file);
     }
     else
     {

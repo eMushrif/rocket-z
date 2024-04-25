@@ -122,7 +122,7 @@ void bootloader_run()
 
     for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
     {
-         if (bootInfo_hasImage(&bootInfo->stores[i]) && bootInfo_hasLoadRequest(&bootInfo->stores[i]))
+        if (bootInfo_hasImage(&bootInfo->stores[i]) && bootInfo_hasLoadRequest(&bootInfo->stores[i]))
 
         {
             bootLog("INFO: Store #%d has load request", i);
@@ -156,7 +156,7 @@ void bootloader_run()
                 continue;
             }
 
-#ifdef CONFIG_ROCKETZ_PRELOAD_CHECKSUM
+#if CONFIG_ROCKETZ_PRELOAD_CHECKSUM
             // verify checksum of new image
             verified = appImage_verifyChecksum(&bootInfo->stores[i]);
 
@@ -198,13 +198,13 @@ void bootloader_run()
         }
     }
 
-if (CONFIG_ROCKETZ_DEBUG || !bootloader_isAppSecure())
-{
-    bootInfo_failClear(bootInfo);
-    bootInfo_setHasImage(&bootInfo->appStore, true);
-    bootInfo_save(&bootInfoBuffer);
-    bootloader_jump(CONFIG_ROCKETZ_APP_ADDR + CONFIG_ROCKETZ_DEFAULT_HEADER_SIZE);
-}
+    if (CONFIG_ROCKETZ_DEBUG || !bootloader_isAppSecure())
+    {
+        bootInfo_failClear(bootInfo);
+        bootInfo_setHasImage(&bootInfo->appStore, true);
+        bootInfo_save(&bootInfoBuffer);
+        bootloader_jump(CONFIG_ROCKETZ_APP_ADDR + CONFIG_ROCKETZ_DEFAULT_HEADER_SIZE);
+    }
 
     res = appImage_readHeader(&header, &bootInfo->appStore);
 

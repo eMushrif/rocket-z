@@ -7,7 +7,7 @@ static int logStartIndex = 0;
 static int logIndex;
 static const struct BootFlashDevice *logFlash;
 
-#ifdef CONFIG_ROCKETZ_BOOTLOG
+#if CONFIG_ROCKETZ_BOOTLOG
 enum BootError bootLogInit(const struct BootFlashDevice *flash, uint32_t address)
 {
     logFlash = flash;
@@ -37,7 +37,7 @@ enum BootError bootLogInit(const struct BootFlashDevice *flash, uint32_t address
 }
 #endif
 
-#ifdef CONFIG_ROCKETZ_BOOTLOG
+#if CONFIG_ROCKETZ_BOOTLOG
 void bootLog(const char *format, ...)
 {
     if (logStartIndex == 0)

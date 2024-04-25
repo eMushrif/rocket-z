@@ -267,6 +267,8 @@ int main(int argc, char *argv[])
     read = getline(&line, &len, signature);
 
     strcpy(signature_pem, line);
+	
+	fclose(signature);
 
     // Do the crypto !!
 
@@ -312,6 +314,8 @@ int main(int argc, char *argv[])
     memset(peerPublicKey, 0, MAX_LENGTH);
 
     read = fread(peerPublicKey, 1, MAX_LENGTH, public_key_file);
+	
+	fclose(public_key_file);
 
     if (read < 0)
     {

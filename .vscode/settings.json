@@ -6,6 +6,8 @@
     "*.cpp": "cpp",
     "kernel.h": "c",
     "bootloader.h": "c",
-    "mempool_heap.h": "c"
+    "mempool_heap.h": "c",
+    "stddef.h": "c",
+    "config.h": "c"
   }
 }

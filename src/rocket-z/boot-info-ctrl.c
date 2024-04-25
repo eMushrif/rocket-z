@@ -67,10 +67,10 @@ enum BootError bootInfo_init(struct BootInfo *info)
         info->version = BOOT_VERSION_0_0;
         info->rollbackImageIndex = -1;
         info->wdtChannelCount = 0;
-		
-		info->appStore.storage = BOOT_IMG_STORAGE_INTERNAL_FLASH;
-		info->appStore.startAddr = ROCKETZ_APP_ADDR;
-		info->appStore.maxSize = ROCKETZ_MAX_APPIMAGE_SIZE;
+
+        info->appStore.storage = BOOT_IMG_STORAGE_INTERNAL_FLASH;
+        info->appStore.startAddr = CONFIG_ROCKETZ_APP_ADDR;
+        info->appStore.maxSize = CONFIG_ROCKETZ_MAX_APPIMAGE_SIZE;
     }
 
     // make sure appStore parameters are not changed
