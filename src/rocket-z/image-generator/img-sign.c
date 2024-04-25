@@ -174,7 +174,10 @@ int main(int argc, char **argv)
 
     eckey = readPrivateKey(key_file);
     if (eckey == NULL)
+	{
+		fprintf(stderr, "Error reading private key");
         return 1;
+	}
 
     // Create a SHA-256 hash of the message
     SHA256_CTX sha256;
@@ -187,6 +190,7 @@ int main(int argc, char **argv)
 
     if (!ECDSA_sign(0, digest, sizeof(digest), signature, &sig_len, eckey))
     {
+		fprintf(stderr, "Error signing file");
         free(signature);
         return 1;
     }

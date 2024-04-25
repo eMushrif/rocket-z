@@ -122,7 +122,8 @@ void bootloader_run()
 
     for (int i = 0; i < ARRAY_SIZE(bootInfo->stores); i++)
     {
-        if (bootInfo_hasLoadRequest(&bootInfo->stores[i]))
+         if (bootInfo_hasImage(&bootInfo->stores[i]) && bootInfo_hasLoadRequest(&bootInfo->stores[i]))
+
         {
             bootLog("INFO: Store #%d has load request", i);
 
